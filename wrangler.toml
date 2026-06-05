@@ -1,0 +1,14 @@
+name = "grocery-list"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "grocery-list-db"
+database_id = "df6ec9f6-01a4-4f57-a5cb-834f25e179e1"
+
+# Secrets (set via `wrangler secret put TELEGRAM_BOT_TOKEN`):
+#   TELEGRAM_BOT_TOKEN — bot token from @BotFather
+#
+# .env.local (frontend):
+#   VITE_BOT_USERNAME=your_bot_username
