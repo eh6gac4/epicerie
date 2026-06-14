@@ -32,7 +32,10 @@ export const api = {
   getList: (id) => request('GET', `/api/lists/${id}`),
   deleteList: (id) => request('DELETE', `/api/lists/${id}`),
   getItems: (listId) => request('GET', `/api/lists/${listId}/items`),
-  addItem: (listId, name) => request('POST', `/api/lists/${listId}/items`, { name }),
+  addItem: (listId, data) => request('POST', `/api/lists/${listId}/items`, typeof data === 'string' ? { name: data } : data),
   updateItem: (id, data) => request('PATCH', `/api/items/${id}`, data),
   deleteItem: (id) => request('DELETE', `/api/items/${id}`),
+  getFavorites: () => request('GET', '/api/favorites'),
+  addFavorite: (name, category) => request('POST', '/api/favorites', { name, category }),
+  removeFavorite: (id) => request('DELETE', `/api/favorites/${id}`),
 }

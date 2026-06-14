@@ -38,56 +38,89 @@
       </div>
 
       <template v-else>
-        <!-- Unchecked items -->
-        <TransitionGroup name="item" tag="div" class="item-group">
-          <div
-            v-for="item in uncheckedItems"
-            :key="item.id"
-            class="item"
-            @click="toggleItem(item)"
-          >
-            <div class="checkbox">
-              <svg v-if="item.checked" width="12" height="10" viewBox="0 0 12 10" fill="none">
-                <path d="M1 5L4.5 8.5L11 1.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-            <span class="item-name">{{ item.name }}</span>
-            <button class="del-btn" @click.stop="deleteItem(item)" aria-label="削除">
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                <path d="M1.5 1.5l10 10M11.5 1.5l-10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              </svg>
-            </button>
+        <div v-for="group in groupedItems" :key="group.category" class="cat-section">
+          <div class="cat-header">
+            <span class="cat-label">{{ group.category }}</span>
+            <div class="cat-rule" />
           </div>
-        </TransitionGroup>
-
-        <!-- Checked section -->
-        <template v-if="checkedItems.length > 0">
-          <div class="section-label">完了済み {{ checkedItems.length }}件</div>
-          <TransitionGroup name="item" tag="div" class="item-group muted">
+          <TransitionGroup name="item" tag="div" class="item-group">
             <div
-              v-for="item in checkedItems"
+              v-for="item in group.items"
               :key="item.id"
               class="item"
-              @click="toggleItem(item)"
+              :class="{ 'item--done': item.checked }"
+              @click="handleItemClick(item)"
+              @pointerdown="onPointerDown(item, $event)"
+              @pointermove="onPointerMove($event)"
+              @pointerup="onPointerUp"
+              @pointercancel="onPointerUp"
             >
-              <div class="checkbox is-checked">
-                <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
-                  <path d="M1 5L4.5 8.5L11 1.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+              <div class="checkbox" :class="{ 'is-checked': item.checked }">
+                <svg v-if="item.checked" width="11" height="9" viewBox="0 0 11 9" fill="none">
+                  <path d="M1 4.5L4 7.5L10 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </div>
-              <span class="item-name is-done">{{ item.name }}</span>
-              <button class="del-btn" @click.stop="deleteItem(item)" aria-label="削除">
-                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                  <path d="M1.5 1.5l10 10M11.5 1.5l-10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <div class="item-body">
+                <span class="item-name" :class="{ 'is-done': item.checked }">{{ item.name }}</span>
+                <span v-if="item.note" class="item-note">{{ item.note }}</span>
+              </div>
+
+              <!-- quantity controls -->
+              <div v-if="isNumericQty(item)" class="qty-ctrl"
+                @click.stop @pointerdown.stop @pointerup.stop @pointermove.stop>
+                <button class="qty-btn" @click="decrementQty(item)">−</button>
+                <span class="qty-val">{{ item.quantity }}</span>
+                <button class="qty-btn" @click="incrementQty(item)">＋</button>
+              </div>
+              <span v-else-if="item.quantity" class="item-qty">{{ item.quantity }}</span>
+
+              <!-- favorite button -->
+              <button class="fav-btn" :class="{ 'is-fav': isFavorite(item) }"
+                @click.stop="toggleFavorite(item)"
+                @pointerdown.stop @pointerup.stop @pointermove.stop>
+                <svg width="15" height="15" viewBox="0 0 24 24"
+                  :fill="isFavorite(item) ? 'currentColor' : 'none'"
+                  stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                 </svg>
               </button>
             </div>
           </TransitionGroup>
-        </template>
+        </div>
+
+        <button v-if="checkedCount > 0" class="checked-toggle" @click="showChecked = !showChecked">
+          <div class="ct-rule" />
+          <span class="ct-label">
+            購入済み {{ checkedCount }}件
+            <svg class="ct-chevron" :class="{ 'ct-chevron--open': showChecked }"
+              width="10" height="6" viewBox="0 0 10 6" fill="none">
+              <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <div class="ct-rule" />
+        </button>
       </template>
     </main>
 
     <footer class="footer">
+      <Transition name="suggest">
+        <div v-if="showFavorites || showSuggestions" class="suggest-panel">
+          <template v-if="showFavorites">
+            <div class="suggest-section-label">よく買うもの</div>
+            <div v-for="fav in favorites" :key="fav.id" class="suggest-item" @click="addFromFavorite(fav)">
+              <span class="suggest-name">{{ fav.name }}</span>
+              <span class="suggest-cat">{{ fav.category }}</span>
+            </div>
+          </template>
+          <template v-else>
+            <div v-for="s in filteredSuggestions" :key="s.name" class="suggest-item" @click="addFromSuggestion(s)">
+              <span class="suggest-name">{{ s.name }}</span>
+              <span class="suggest-cat">{{ s.category }}</span>
+            </div>
+          </template>
+        </div>
+      </Transition>
       <div class="input-row">
         <input
           ref="addInput"
@@ -95,12 +128,14 @@
           class="add-input"
           placeholder="アイテムを追加…"
           maxlength="100"
-          @keydown.enter="addItem"
+          @focus="inputFocused = true"
+          @blur="onInputBlur"
+          @keydown.enter="quickAdd"
         />
         <button
           class="add-btn"
-          :disabled="!newItem.trim()"
-          @click="addItem"
+          :class="{ 'add-btn--disabled': !newItem.trim() }"
+          @click="quickAdd"
           aria-label="追加"
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -109,6 +144,59 @@
         </button>
       </div>
     </footer>
+
+    <!-- Edit sheet -->
+    <Teleport to="body">
+      <Transition name="overlay">
+        <div v-if="editItem" class="overlay" @click.self="closeEdit">
+          <div class="sheet">
+            <div class="sheet-handle" />
+
+            <div class="field-group">
+              <label class="field-label">名前</label>
+              <input v-model="editForm.name" class="sheet-input" maxlength="100" />
+            </div>
+
+            <div class="field-group">
+              <label class="field-label">カテゴリ</label>
+              <div class="pills">
+                <button
+                  v-for="cat in CATEGORIES"
+                  :key="cat"
+                  class="pill"
+                  :class="{ 'pill--active': editForm.category === cat }"
+                  @click="editForm.category = cat"
+                >{{ cat }}</button>
+              </div>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label">数量</label>
+              <input
+                v-model="editForm.quantity"
+                class="sheet-input"
+                placeholder="なし"
+                maxlength="10"
+              />
+            </div>
+
+            <div class="field-group">
+              <label class="field-label">メモ</label>
+              <textarea
+                v-model="editForm.note"
+                class="sheet-textarea"
+                placeholder="補足・メモ…"
+                maxlength="200"
+                rows="2"
+              />
+            </div>
+
+            <button class="sheet-btn" @click="saveEdit">保存する</button>
+            <button class="sheet-btn sheet-btn--danger" @click="confirmDeleteFromEdit">削除する</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <Teleport to="body">
       <Transition name="toast">
@@ -119,10 +207,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../composables/useApi.js'
 import { getWebApp } from '../composables/useTelegram.js'
+import { CATEGORIES, SUGGESTIONS } from '../data/suggestions.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -130,21 +219,253 @@ const listId = route.params.id
 
 const list = ref(null)
 const items = ref([])
+const favorites = ref([])
 const loading = ref(true)
 const error = ref(null)
 const newItem = ref('')
 const toast = ref('')
+const inputFocused = ref(false)
+const editItem = ref(null)
+const editForm = reactive({ name: '', category: 'その他', quantity: '', note: '' })
+const showChecked = ref(false)
+
 let pollTimer = null
+let longPressTimer = null
+let longPressTriggered = false
+let pressStart = { x: 0, y: 0 }
 
-const uncheckedItems = computed(() => items.value.filter(i => !i.checked))
-const checkedItems = computed(() => items.value.filter(i => i.checked))
+const CATEGORY_ORDER = ['野菜・果物', '肉・魚', '乳製品・卵', '冷凍食品', 'パン・穀物', '飲み物', '調味料', '日用品', 'その他']
 
-async function loadList() {
-  try {
-    list.value = await api.getList(listId)
-  } catch (e) {
-    error.value = e.message
+const checkedCount = computed(() => items.value.filter(i => i.checked).length)
+
+const groupedItems = computed(() => {
+  const byCategory = {}
+  for (const item of items.value) {
+    if (!showChecked.value && item.checked) continue
+    const cat = item.category || 'その他'
+    if (!byCategory[cat]) byCategory[cat] = []
+    byCategory[cat].push(item)
   }
+  const known = CATEGORY_ORDER.filter(cat => byCategory[cat]?.length)
+  const unknown = Object.keys(byCategory).filter(cat => !CATEGORY_ORDER.includes(cat))
+  return [...known, ...unknown].map(cat => ({
+    category: cat,
+    items: [...byCategory[cat]].sort((a, b) => {
+      if (a.checked !== b.checked) return a.checked ? 1 : -1
+      return (a.created_at || 0) - (b.created_at || 0)
+    }),
+  }))
+})
+
+const favoriteNames = computed(() => new Set(favorites.value.map(f => f.name)))
+
+const filteredSuggestions = computed(() => {
+  const q = newItem.value.trim()
+  if (!q) return []
+  return SUGGESTIONS.filter(s => s.name.includes(q)).slice(0, 6)
+})
+
+const showSuggestions = computed(() => inputFocused.value && !!newItem.value.trim() && filteredSuggestions.value.length > 0)
+const showFavorites = computed(() => inputFocused.value && !newItem.value.trim() && favorites.value.length > 0)
+
+// ── Long press ───────────────────────────────────────────────
+function onPointerDown(item, e) {
+  longPressTriggered = false
+  pressStart = { x: e.clientX, y: e.clientY }
+  longPressTimer = setTimeout(() => {
+    longPressTriggered = true
+    openEdit(item)
+    getWebApp()?.HapticFeedback?.impactOccurred('medium')
+  }, 500)
+}
+
+function onPointerMove(e) {
+  const dx = e.clientX - pressStart.x
+  const dy = e.clientY - pressStart.y
+  if (Math.sqrt(dx * dx + dy * dy) > 6) clearTimeout(longPressTimer)
+}
+
+function onPointerUp() { clearTimeout(longPressTimer) }
+
+function handleItemClick(item) {
+  if (longPressTriggered) { longPressTriggered = false; return }
+  toggleItem(item)
+}
+
+// ── Edit sheet ───────────────────────────────────────────────
+function openEdit(item) {
+  editItem.value = item
+  editForm.name = item.name
+  editForm.category = item.category || 'その他'
+  editForm.quantity = item.quantity ?? ''
+  editForm.note = item.note || ''
+}
+
+function closeEdit() { editItem.value = null }
+
+async function saveEdit() {
+  const item = editItem.value
+  if (!item || !editForm.name.trim()) return
+  const updates = {
+    name: editForm.name.trim(),
+    category: editForm.category,
+    quantity: editForm.quantity || null,
+    note: editForm.note.trim(),
+  }
+  Object.assign(item, updates)
+  closeEdit()
+  try {
+    await api.updateItem(item.id, updates)
+  } catch (e) {
+    showToast(e.message)
+  }
+}
+
+async function confirmDeleteFromEdit() {
+  const item = editItem.value
+  closeEdit()
+  if (item) await deleteItem(item)
+}
+
+// ── Favorites ────────────────────────────────────────────────
+function isFavorite(item) {
+  return favoriteNames.value.has(item.name)
+}
+
+async function toggleFavorite(item) {
+  const existing = favorites.value.find(f => f.name === item.name)
+  if (existing) {
+    favorites.value = favorites.value.filter(f => f.id !== existing.id)
+    getWebApp()?.HapticFeedback?.impactOccurred('light')
+    try {
+      await api.removeFavorite(existing.id)
+    } catch (e) {
+      favorites.value.push(existing)
+      showToast(e.message)
+    }
+  } else {
+    const tmp = { id: '_fav_' + Date.now(), name: item.name, category: item.category || 'その他' }
+    favorites.value.push(tmp)
+    getWebApp()?.HapticFeedback?.impactOccurred('light')
+    try {
+      const created = await api.addFavorite(item.name, item.category || 'その他')
+      const idx = favorites.value.findIndex(f => f.id === tmp.id)
+      if (idx !== -1) favorites.value[idx] = created
+    } catch (e) {
+      favorites.value = favorites.value.filter(f => f.id !== tmp.id)
+      showToast(e.message)
+    }
+  }
+}
+
+// ── Suggestions / Favorites panel ───────────────────────────
+function onInputBlur() {
+  setTimeout(() => { inputFocused.value = false }, 300)
+}
+
+async function addFromSuggestion(s) {
+  newItem.value = ''
+  inputFocused.value = false
+  await addItemFull(s.name, s.category, null, '')
+}
+
+async function addFromFavorite(fav) {
+  newItem.value = ''
+  inputFocused.value = false
+  await addItemFull(fav.name, fav.category, null, '')
+}
+
+async function quickAdd() {
+  const name = newItem.value.trim()
+  if (!name) return
+  newItem.value = ''
+  await addItemFull(name, 'その他', null, '')
+}
+
+async function addItemFull(name, category, quantity, note) {
+  const tmp = {
+    id: '_tmp_' + Date.now(),
+    list_id: listId,
+    name,
+    checked: false,
+    category: category || 'その他',
+    quantity: quantity ?? null,
+    unit: '',
+    note: note || '',
+    created_at: Date.now(),
+  }
+  items.value.push(tmp)
+  getWebApp()?.HapticFeedback?.impactOccurred('light')
+  try {
+    const created = await api.addItem(listId, { name, category, quantity, unit: '', note })
+    const idx = items.value.findIndex(i => i.id === tmp.id)
+    if (idx !== -1) items.value[idx] = created
+  } catch (e) {
+    items.value = items.value.filter(i => i.id !== tmp.id)
+    showToast(e.message)
+    newItem.value = name
+  }
+}
+
+// ── Quantity controls ────────────────────────────────────────
+function isNumericQty(item) {
+  return item.quantity !== null && item.quantity !== '' && !isNaN(Number(item.quantity))
+}
+
+async function incrementQty(item) {
+  const newQty = String(Number(item.quantity) + 1)
+  const prev = item.quantity
+  item.quantity = newQty
+  getWebApp()?.HapticFeedback?.impactOccurred('light')
+  try {
+    await api.updateItem(item.id, { quantity: newQty })
+  } catch (e) {
+    item.quantity = prev
+    showToast(e.message)
+  }
+}
+
+async function decrementQty(item) {
+  const current = Number(item.quantity)
+  if (current <= 1) return
+  const newQty = String(current - 1)
+  const prev = item.quantity
+  item.quantity = newQty
+  getWebApp()?.HapticFeedback?.impactOccurred('light')
+  try {
+    await api.updateItem(item.id, { quantity: newQty })
+  } catch (e) {
+    item.quantity = prev
+    showToast(e.message)
+  }
+}
+
+// ── Toggle / Delete ──────────────────────────────────────────
+async function toggleItem(item) {
+  const prev = item.checked
+  item.checked = !prev
+  getWebApp()?.HapticFeedback?.selectionChanged()
+  try {
+    await api.updateItem(item.id, { checked: item.checked })
+  } catch {
+    item.checked = prev
+  }
+}
+
+async function deleteItem(item) {
+  items.value = items.value.filter(i => i.id !== item.id)
+  getWebApp()?.HapticFeedback?.impactOccurred('medium')
+  try {
+    await api.deleteItem(item.id)
+  } catch {
+    items.value.push(item)
+    showToast('削除できませんでした')
+  }
+}
+
+// ── Load / Share ─────────────────────────────────────────────
+async function loadList() {
+  try { list.value = await api.getList(listId) } catch (e) { error.value = e.message }
 }
 
 async function loadItems() {
@@ -158,52 +479,15 @@ async function loadItems() {
   }
 }
 
-async function toggleItem(item) {
-  const prev = item.checked
-  item.checked = !prev
-  getWebApp()?.HapticFeedback?.selectionChanged()
-  try {
-    await api.updateItem(item.id, { checked: item.checked })
-  } catch {
-    item.checked = prev
-  }
-}
-
-async function addItem() {
-  const name = newItem.value.trim()
-  if (!name) return
-  newItem.value = ''
-  const tmp = { id: '_tmp_' + Date.now(), list_id: listId, name, checked: false }
-  items.value.push(tmp)
-  getWebApp()?.HapticFeedback?.impactOccurred('light')
-  try {
-    const created = await api.addItem(listId, name)
-    const idx = items.value.findIndex(i => i.id === tmp.id)
-    if (idx !== -1) items.value[idx] = created
-  } catch (e) {
-    items.value = items.value.filter(i => i.id !== tmp.id)
-    showToast(e.message)
-    newItem.value = name
-  }
-}
-
-async function deleteItem(item) {
-  items.value = items.value.filter(i => i.id !== item.id)
-  getWebApp()?.HapticFeedback?.impactOccurred('medium')
-  try {
-    await api.deleteItem(item.id)
-  } catch {
-    items.value.push(item)
-  }
+async function loadFavorites() {
+  try { favorites.value = await api.getFavorites() } catch { /* ignore */ }
 }
 
 async function share() {
   const code = list.value?.share_code
   if (!code) return
   const botUsername = import.meta.env.VITE_BOT_USERNAME
-  const url = botUsername
-    ? `https://t.me/${botUsername}?startapp=${code}`
-    : `シェアコード: ${code}`
+  const url = botUsername ? `https://t.me/${botUsername}?startapp=${code}` : `シェアコード: ${code}`
   try {
     await navigator.clipboard.writeText(url)
     showToast('リンクをコピーしました')
@@ -213,9 +497,7 @@ async function share() {
   getWebApp()?.HapticFeedback?.notificationOccurred('success')
 }
 
-function goBack() {
-  router.push('/')
-}
+function goBack() { router.push('/') }
 
 function showToast(msg, ms = 2500) {
   toast.value = msg
@@ -223,13 +505,11 @@ function showToast(msg, ms = 2500) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadList(), loadItems()])
+  await Promise.all([loadList(), loadItems(), loadFavorites()])
   pollTimer = setInterval(loadItems, 3000)
 })
 
-onUnmounted(() => {
-  clearInterval(pollTimer)
-})
+onUnmounted(() => { clearInterval(pollTimer) })
 </script>
 
 <style scoped>
@@ -268,7 +548,6 @@ onUnmounted(() => {
 .back-btn:active { opacity: 0.55; }
 
 .header-title {
-  font-family: var(--font-serif);
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -310,30 +589,10 @@ onUnmounted(() => {
   text-align: center;
 }
 
-.empty-art {
-  color: var(--tg-hint);
-  opacity: 0.3;
-  margin-bottom: 10px;
-}
-
-.state-title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 500;
-}
-
-.state-sub {
-  margin: 0;
-  font-size: 13px;
-  color: var(--tg-hint);
-  line-height: 1.6;
-}
-
-.state-msg {
-  margin: 0;
-  font-size: 14px;
-}
-
+.empty-art { color: var(--tg-hint); opacity: 0.3; margin-bottom: 10px; }
+.state-title { margin: 0; font-size: 15px; font-weight: 500; }
+.state-sub { margin: 0; font-size: 13px; color: var(--tg-hint); line-height: 1.6; }
+.state-msg { margin: 0; font-size: 14px; }
 .error-msg { color: #e05050; }
 
 .spinner {
@@ -345,35 +604,48 @@ onUnmounted(() => {
   animation: spin 0.7s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Category sections ── */
+.cat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 16px 8px;
+}
+
+.cat-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--tg-hint);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cat-rule {
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--tg-hint) 14%, transparent);
 }
 
 /* ── Items ── */
-.item-group {
-  position: relative;
-}
-
-.muted {
-  opacity: 0.6;
-}
+.item-group { position: relative; }
 
 .item {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 11px 12px 11px 16px;
   border-bottom: 1px solid color-mix(in srgb, var(--tg-hint) 8%, transparent);
   cursor: pointer;
   user-select: none;
-  transition: background 0.1s;
+  transition: background 0.1s, opacity 0.35s;
 }
 
-.item:active {
-  background: color-mix(in srgb, var(--tg-hint) 7%, transparent);
-}
+.item:active { background: color-mix(in srgb, var(--tg-hint) 7%, transparent); }
+.item--done { opacity: 0.38; }
 
-/* Custom checkbox – rounded square */
 .checkbox {
   flex-shrink: 0;
   width: 24px;
@@ -394,67 +666,193 @@ onUnmounted(() => {
   transform: scale(1.06);
 }
 
-.item-name {
+.item-body {
   flex: 1;
-  font-size: 16px;
-  line-height: 1.4;
-  font-weight: 400;
+  min-width: 0;
 }
 
-.item-name.is-done {
-  text-decoration: line-through;
+.item-name { display: block; font-size: 16px; line-height: 1.4; }
+.item-name.is-done { text-decoration: line-through; }
+
+.item-note {
+  display: block;
+  font-size: 13px;
   color: var(--tg-hint);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.del-btn {
+.item-qty {
   flex-shrink: 0;
+  font-size: 13px;
   color: var(--tg-hint);
-  padding: 6px;
-  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* ── Quantity controls ── */
+.qty-ctrl {
   display: flex;
   align-items: center;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
+  gap: 2px;
+  flex-shrink: 0;
 }
 
-.item:hover .del-btn,
-.item:focus-within .del-btn {
-  opacity: 0.55;
+.qty-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--tg-secondary-bg);
+  color: var(--tg-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+  transition: background 0.1s, transform 0.1s;
 }
 
-@media (hover: none) {
-  .del-btn { opacity: 0.45; }
+.qty-btn:active {
+  background: color-mix(in srgb, var(--tg-hint) 22%, var(--tg-secondary-bg));
+  transform: scale(0.9);
 }
 
-.del-btn:active {
-  opacity: 1;
-  color: #e05050;
+.qty-val {
+  font-size: 13px;
+  color: var(--tg-hint);
+  min-width: 24px;
+  text-align: center;
+  white-space: nowrap;
 }
 
-/* Section label */
-.section-label {
+/* ── Favorite button ── */
+.fav-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--tg-hint) 45%, transparent);
+  transition: color 0.18s, transform 0.12s;
+}
+
+.fav-btn.is-fav { color: #f0a500; }
+.fav-btn:active { transform: scale(0.85); }
+
+/* ── Item transitions ── */
+.item-move { transition: transform 0.38s cubic-bezier(0.22, 0.61, 0.36, 1); }
+.item-enter-active { transition: opacity 0.2s, transform 0.2s; }
+.item-leave-active { transition: opacity 0.15s; position: absolute; width: 100%; }
+.item-enter-from { opacity: 0; transform: translateX(-6px); }
+.item-leave-to { opacity: 0; }
+
+/* ── Checked toggle ── */
+.checked-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--tg-hint);
+  margin-top: 4px;
+}
+
+.checked-toggle:active { opacity: 0.6; }
+
+.ct-rule {
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--tg-hint) 14%, transparent);
+}
+
+.ct-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--tg-hint);
-  padding: 16px 16px 6px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ct-chevron {
+  transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.ct-chevron--open {
+  transform: rotate(180deg);
 }
 
 /* ── Footer ── */
 .footer {
+  position: relative;
   flex-shrink: 0;
   background: var(--tg-bg);
   border-top: 1px solid color-mix(in srgb, var(--tg-hint) 11%, transparent);
   padding: 10px 12px;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 44px);
 }
 
-.input-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+/* ── Suggest / Favorites panel ── */
+.suggest-panel {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--tg-bg);
+  border-top: 1px solid color-mix(in srgb, var(--tg-hint) 11%, transparent);
+  max-height: 240px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -4px 20px color-mix(in srgb, var(--tg-text) 6%, transparent);
 }
+
+.suggest-section-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--tg-hint);
+  padding: 11px 16px 6px;
+}
+
+.suggest-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--tg-hint) 8%, transparent);
+  cursor: pointer;
+  user-select: none;
+}
+
+.suggest-item:last-child { border-bottom: none; }
+.suggest-item:active { background: color-mix(in srgb, var(--tg-hint) 7%, transparent); }
+.suggest-name { font-size: 15px; flex: 1; }
+
+.suggest-cat {
+  font-size: 11px;
+  color: var(--tg-hint);
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--tg-hint) 10%, transparent);
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.suggest-enter-active, .suggest-leave-active { transition: opacity 0.15s, transform 0.15s; }
+.suggest-enter-from, .suggest-leave-to { opacity: 0; transform: translateY(4px); }
+
+/* ── Input row ── */
+.input-row { display: flex; gap: 8px; align-items: center; }
 
 .add-input {
   flex: 1;
@@ -468,13 +866,8 @@ onUnmounted(() => {
   transition: background 0.15s;
 }
 
-.add-input:focus {
-  background: color-mix(in srgb, var(--tg-secondary-bg) 80%, var(--tg-hint));
-}
-
-.add-input::placeholder {
-  color: var(--tg-hint);
-}
+.add-input:focus { background: color-mix(in srgb, var(--tg-secondary-bg) 80%, var(--tg-hint)); }
+.add-input::placeholder { color: var(--tg-hint); }
 
 .add-btn {
   width: 44px;
@@ -489,36 +882,130 @@ onUnmounted(() => {
   transition: opacity 0.14s, transform 0.12s;
 }
 
-.add-btn:disabled {
-  opacity: 0.38;
-  cursor: not-allowed;
+.add-btn--disabled { opacity: 0.38; }
+.add-btn:not(.add-btn--disabled):active { opacity: 0.8; transform: scale(0.91); }
+
+/* ── Overlay / Sheet ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: flex-end;
+  z-index: 100;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
-.add-btn:not(:disabled):active {
-  opacity: 0.8;
-  transform: scale(0.91);
-}
-
-/* ── Item Transitions ── */
-.item-enter-active,
-.item-leave-active {
-  transition: opacity 0.18s, transform 0.18s;
-}
-
-.item-enter-from {
-  opacity: 0;
-  transform: translateY(-6px);
-}
-
-.item-leave-to {
-  opacity: 0;
-  transform: translateX(8px);
-}
-
-.item-leave-active {
-  position: absolute;
+.sheet {
   width: 100%;
+  background: var(--tg-bg);
+  border-radius: 22px 22px 0 0;
+  padding: 10px 20px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  max-height: 85dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: sheetUp 0.32s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
+
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--tg-hint) 32%, transparent);
+  margin: 0 auto 22px;
+}
+
+.field-group { margin-bottom: 18px; }
+
+.field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--tg-hint);
+  margin-bottom: 8px;
+}
+
+.sheet-input {
+  display: block;
+  width: 100%;
+  background: var(--tg-secondary-bg);
+  border: none;
+  border-radius: 12px;
+  padding: 13px 16px;
+  font-size: 16px;
+  color: var(--tg-text);
+  outline: none;
+}
+
+.sheet-textarea {
+  display: block;
+  width: 100%;
+  background: var(--tg-secondary-bg);
+  border: none;
+  border-radius: 12px;
+  padding: 13px 16px;
+  font-size: 15px;
+  color: var(--tg-text);
+  outline: none;
+  resize: none;
+  min-height: 64px;
+}
+
+.sheet-textarea::placeholder { color: var(--tg-hint); }
+.sheet-input::placeholder { color: var(--tg-hint); }
+
+.pills {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pills::-webkit-scrollbar { display: none; }
+
+.pill {
+  padding: 7px 13px;
+  border-radius: 20px;
+  font-size: 13px;
+  background: var(--tg-secondary-bg);
+  color: var(--tg-text);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pill--active { background: var(--tg-button); color: var(--tg-button-text); }
+
+.sheet-btn {
+  display: block;
+  width: 100%;
+  background: var(--tg-button);
+  color: var(--tg-button-text);
+  border-radius: 12px;
+  padding: 15px;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  margin-bottom: 10px;
+}
+
+.sheet-btn:active { opacity: 0.78; }
+.sheet-btn--danger { background: color-mix(in srgb, #e05050 12%, transparent); color: #e05050; }
+
+.overlay-enter-active, .overlay-leave-active { transition: opacity 0.25s ease; }
+.overlay-enter-from, .overlay-leave-to { opacity: 0; }
 
 /* ── Toast ── */
 .toast {
@@ -536,14 +1023,6 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.toast-enter-active,
-.toast-leave-active {
-  transition: opacity 0.2s, transform 0.2s;
-}
-
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(8px);
-}
+.toast-enter-active, .toast-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
 </style>

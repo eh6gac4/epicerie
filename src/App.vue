@@ -63,7 +63,7 @@ onMounted(() => {
 
 body {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   background: var(--tg-bg);
   color: var(--tg-text);
   -webkit-font-smoothing: antialiased;
@@ -72,7 +72,7 @@ body {
 }
 
 button {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   color: inherit;
   cursor: pointer;
   border: none;
@@ -83,6 +83,6 @@ button {
 }
 
 input {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
 }
 </style>

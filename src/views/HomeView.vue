@@ -334,7 +334,6 @@ onMounted(async () => {
 }
 
 .card-name {
-  font-family: var(--font-serif);
   font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -424,7 +423,6 @@ onMounted(async () => {
 }
 
 .sheet-title {
-  font-family: var(--font-serif);
   font-size: 26px;
   font-weight: 600;
   letter-spacing: -0.01em;
