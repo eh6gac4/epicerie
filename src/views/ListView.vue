@@ -38,10 +38,34 @@
       </div>
 
       <template v-else>
+        <button v-if="checkedCount > 0" class="checked-toggle" @click="showChecked = !showChecked">
+          <div class="ct-rule" />
+          <span class="ct-label">
+            購入済み {{ checkedCount }}件
+            <svg class="ct-chevron" :class="{ 'ct-chevron--open': showChecked }"
+              width="10" height="6" viewBox="0 0 10 6" fill="none">
+              <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <div class="ct-rule" />
+        </button>
+
         <div v-for="group in groupedItems" :key="group.category" class="cat-section">
           <div class="cat-header">
             <span class="cat-label">{{ group.category }}</span>
             <div class="cat-rule" />
+            <button
+              v-if="group.category === 'その他'"
+              class="recat-btn"
+              :disabled="recategorizing"
+              @click.stop="recategorizeOthers"
+              @pointerdown.stop @pointerup.stop @pointermove.stop
+            >
+              <span v-if="recategorizing" class="recat-spinner" />
+              <span v-else class="recat-icon">✦</span>
+              <span class="recat-label">{{ recategorizing ? '分類中…' : '再分類' }}</span>
+            </button>
           </div>
           <TransitionGroup name="item" tag="div" class="item-group">
             <div
@@ -87,19 +111,6 @@
             </div>
           </TransitionGroup>
         </div>
-
-        <button v-if="checkedCount > 0" class="checked-toggle" @click="showChecked = !showChecked">
-          <div class="ct-rule" />
-          <span class="ct-label">
-            購入済み {{ checkedCount }}件
-            <svg class="ct-chevron" :class="{ 'ct-chevron--open': showChecked }"
-              width="10" height="6" viewBox="0 0 10 6" fill="none">
-              <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.6"
-                stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </span>
-          <div class="ct-rule" />
-        </button>
       </template>
     </main>
 
@@ -228,6 +239,7 @@ const inputFocused = ref(false)
 const editItem = ref(null)
 const editForm = reactive({ name: '', category: 'その他', quantity: '', note: '' })
 const showChecked = ref(false)
+const recategorizing = ref(false)
 
 let pollTimer = null
 let longPressTimer = null
@@ -375,11 +387,26 @@ async function addFromFavorite(fav) {
   await addItemFull(fav.name, fav.category, null, '')
 }
 
+async function recategorizeOthers() {
+  if (recategorizing.value) return
+  recategorizing.value = true
+  getWebApp()?.HapticFeedback?.impactOccurred('light')
+  try {
+    const { updated } = await api.recategorize(listId)
+    await loadItems()
+    showToast(updated > 0 ? `${updated}件を再分類しました` : '対象なし')
+  } catch (e) {
+    showToast(e.message)
+  } finally {
+    recategorizing.value = false
+  }
+}
+
 async function quickAdd() {
   const name = newItem.value.trim()
   if (!name) return
   newItem.value = ''
-  await addItemFull(name, 'その他', null, '')
+  await addItemFull(name, null, null, '')
 }
 
 async function addItemFull(name, category, quantity, note) {
@@ -1025,4 +1052,37 @@ onUnmounted(() => { clearInterval(pollTimer) })
 
 .toast-enter-active, .toast-leave-active { transition: opacity 0.2s, transform 0.2s; }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
+
+/* 再分類ボタン */
+.recat-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 4px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--tg-theme-hint-color, #aaa);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.recat-btn:active:not(:disabled) { opacity: 0.5; }
+.recat-btn:disabled { cursor: default; }
+.recat-icon { font-size: 10px; line-height: 1; }
+.recat-label { font-size: 11px; font-weight: 500; }
+.recat-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--tg-theme-hint-color, #aaa);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: recat-spin 0.6s linear infinite;
+}
+@keyframes recat-spin { to { transform: rotate(360deg); } }
 </style>

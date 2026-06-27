@@ -6,22 +6,29 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getWebApp, applyTheme } from './composables/useTelegram.js'
+import { api, hasValidStoredSession } from './composables/useApi.js'
 
 const notInTelegram = ref(false)
 
-onMounted(() => {
+onMounted(async () => {
   const tg = getWebApp()
-  if (tg && tg.initData !== undefined) {
-    if (!tg.initData && !import.meta.env.DEV) {
-      notInTelegram.value = true
-      return
-    }
-    tg.ready()
-    tg.expand()
-    applyTheme()
-  } else {
+  if (!tg || tg.initData === undefined) {
+    notInTelegram.value = true
+    return
+  }
+
+  tg.ready()
+  tg.expand()
+  applyTheme()
+
+  if (tg.initData || import.meta.env.DEV) {
+    // Normal launch or DEV: issue / refresh session token
+    try { await api.createSession() } catch {}
+  } else if (!hasValidStoredSession()) {
+    // No initData and no valid stored token → not accessible outside Telegram
     notInTelegram.value = true
   }
+  // else: initData gone but stored session is still valid → allow through
 })
 </script>
 

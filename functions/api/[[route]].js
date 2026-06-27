@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { categorize, categorizeBatch } from '../lib/categorize.js'
 
 const app = new Hono().basePath('/api')
 
@@ -12,6 +13,18 @@ app.use('*', async (c, next) => {
   const botToken = c.env.TELEGRAM_BOT_TOKEN
   if (!botToken) return c.json({ error: 'Server misconfigured' }, 500)
 
+  // 1. Try session token
+  const sessionToken = c.req.header('X-Session-Token')
+  if (sessionToken) {
+    const result = await verifySession(sessionToken, botToken)
+    if (result.valid) {
+      c.set('userId', result.userId)
+      return next()
+    }
+    // Invalid/expired token — fall through to initData
+  }
+
+  // 2. Try Telegram initData
   const initData = c.req.header('X-Telegram-Init-Data')
   if (!initData) return c.json({ error: 'Unauthorized' }, 401)
 
@@ -123,7 +136,8 @@ app.post('/lists/:id/items', async (c) => {
 
   const id = crypto.randomUUID()
   const now = Date.now()
-  const cat = category || 'その他'
+  // category が明示指定されていればそのまま使う。未指定（null/undefined）なら自動分類。
+  const cat = category != null ? category : await categorize(name.trim(), c.env)
   const qty = quantity ?? null
   const u = unit || ''
   const n = note || ''
@@ -172,6 +186,38 @@ app.delete('/items/:id', async (c) => {
   return c.json({ ok: true })
 })
 
+// POST /api/lists/:id/recategorize — 'その他' アイテムを一括再分類
+app.post('/lists/:id/recategorize', async (c) => {
+  const userId = c.get('userId')
+  const listId = c.req.param('id')
+  if (!await hasAccess(c.env.DB, listId, userId)) return c.json({ error: 'Not found' }, 404)
+
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, name FROM items WHERE list_id = ? AND category = 'その他'"
+  ).bind(listId).all()
+
+  if (results.length === 0) return c.json({ updated: 0 })
+
+  const names = results.map(r => r.name)
+  const categories = await categorizeBatch(names, c.env)
+
+  const now = Date.now()
+  const updates = results
+    .map((r, i) => ({ id: r.id, category: categories[i] }))
+    .filter(u => u.category !== 'その他')
+
+  if (updates.length > 0) {
+    await c.env.DB.batch(
+      updates.map(u =>
+        c.env.DB.prepare('UPDATE items SET category = ?, updated_at = ? WHERE id = ?')
+          .bind(u.category, now, u.id)
+      )
+    )
+  }
+
+  return c.json({ updated: updates.length })
+})
+
 // GET /api/favorites
 app.get('/favorites', async (c) => {
   const userId = c.get('userId')
@@ -208,6 +254,14 @@ app.delete('/favorites/:id', async (c) => {
   return c.json({ ok: true })
 })
 
+// POST /api/auth/session — issue a signed session token for the authenticated user
+app.post('/auth/session', async (c) => {
+  const userId = c.get('userId')
+  const secret = c.env.TELEGRAM_BOT_TOKEN || 'dev-session-secret'
+  const { token, expiresAt } = await signSession(userId, secret)
+  return c.json({ token, expiresAt })
+})
+
 // Helpers
 
 async function hasAccess(db, listId, userId) {
@@ -219,6 +273,54 @@ async function hasAccess(db, listId, userId) {
 function generateShareCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+}
+
+// Session token helpers
+
+const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+function toBase64url(bytes) {
+  let binary = ''
+  const arr = new Uint8Array(bytes)
+  for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i])
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
+function fromBase64url(str) {
+  const b64 = str.replace(/-/g, '+').replace(/_/g, '/')
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+}
+
+async function signSession(userId, secret) {
+  const exp = Date.now() + SESSION_DURATION_MS
+  const payloadB64 = toBase64url(new TextEncoder().encode(JSON.stringify({ uid: userId, exp })))
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadB64))
+  return { token: `${payloadB64}.${toBase64url(sig)}`, expiresAt: exp }
+}
+
+async function verifySession(token, secret) {
+  try {
+    const dot = token.lastIndexOf('.')
+    if (dot < 1) return { valid: false }
+    const payloadB64 = token.slice(0, dot)
+    const sigB64 = token.slice(dot + 1)
+
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    )
+    const expected = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadB64))
+    if (toBase64url(expected) !== sigB64) return { valid: false }
+
+    const payload = JSON.parse(new TextDecoder().decode(fromBase64url(payloadB64)))
+    if (payload.exp <= Date.now()) return { valid: false }
+
+    return { valid: true, userId: payload.uid }
+  } catch {
+    return { valid: false }
+  }
 }
 
 async function validateInitData(initData, botToken) {
