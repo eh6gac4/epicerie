@@ -327,7 +327,10 @@ async function saveEdit() {
   Object.assign(item, updates)
   closeEdit()
   try {
-    await api.updateItem(item.id, updates)
+    const res = await api.updateItem(item.id, updates)
+    if (res && res.category) {
+      item.category = res.category
+    }
   } catch (e) {
     showToast(e.message)
   }
