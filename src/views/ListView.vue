@@ -541,12 +541,38 @@ function showToast(msg, ms = 2500) {
   setTimeout(() => { toast.value = '' }, ms)
 }
 
+function startPolling() {
+  if (!pollTimer) {
+    pollTimer = setInterval(loadItems, 12000)
+  }
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    loadItems()
+    startPolling()
+  } else {
+    stopPolling()
+  }
+}
+
 onMounted(async () => {
   await Promise.all([loadList(), loadItems(), loadFavorites()])
-  pollTimer = setInterval(loadItems, 3000)
+  startPolling()
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
-onUnmounted(() => { clearInterval(pollTimer) })
+onUnmounted(() => {
+  stopPolling()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 </script>
 
 <style scoped>
