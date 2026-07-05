@@ -29,7 +29,7 @@ async function categorizeByGemini(name, apiKey) {
     contents: name,
     config: {
       systemInstruction: `あなたはスーパーマーケットの商品分類AIです。商品名を受け取り、以下のカテゴリのうち最も適切な1つを、そのままの文字列で返してください。カテゴリ以外の文字は一切含めないでください。\nカテゴリ: ${categoryList}`,
-      maxOutputTokens: 20,
+      maxOutputTokens: 100,
       temperature: 0.0,
     }
   })
