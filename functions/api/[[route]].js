@@ -136,8 +136,8 @@ app.post('/lists/:id/items', async (c) => {
 
   const id = crypto.randomUUID()
   const now = Date.now()
-  // category が明示指定されていればそのまま使う。未指定（null/undefined）なら自動分類。
-  const cat = category != null ? category : await categorize(name.trim(), c.env)
+  // category が「その他」または未指定の場合、自動分類を行う
+  const cat = (category != null && category !== 'その他') ? category : await categorize(name.trim(), c.env)
   const qty = quantity ?? null
   const u = unit || ''
   const n = note || ''
@@ -153,17 +153,26 @@ app.post('/lists/:id/items', async (c) => {
 app.patch('/items/:id', async (c) => {
   const userId = c.get('userId')
   const itemId = c.req.param('id')
-  const item = await c.env.DB.prepare('SELECT list_id FROM items WHERE id = ?').bind(itemId).first()
+  const item = await c.env.DB.prepare('SELECT list_id, name FROM items WHERE id = ?').bind(itemId).first()
   if (!item) return c.json({ error: 'Not found' }, 404)
   if (!await hasAccess(c.env.DB, item.list_id, userId)) return c.json({ error: 'Forbidden' }, 403)
 
   const body = await c.req.json()
   const sets = []
   const vals = []
+  let updatedCategory = undefined
 
   if ('checked' in body) { sets.push('checked = ?'); vals.push(body.checked ? 1 : 0) }
   if ('name' in body && body.name?.trim()) { sets.push('name = ?'); vals.push(body.name.trim()) }
-  if ('category' in body) { sets.push('category = ?'); vals.push(body.category || 'その他') }
+  if ('category' in body) {
+    let newCat = body.category || 'その他'
+    if (newCat === 'その他') {
+      const targetName = body.name?.trim() || item.name
+      newCat = await categorize(targetName, c.env)
+    }
+    updatedCategory = newCat
+    sets.push('category = ?'); vals.push(newCat)
+  }
   if ('quantity' in body) { sets.push('quantity = ?'); vals.push(body.quantity ?? null) }
   if ('unit' in body) { sets.push('unit = ?'); vals.push(body.unit || '') }
   if ('note' in body) { sets.push('note = ?'); vals.push(body.note || '') }
@@ -172,7 +181,10 @@ app.patch('/items/:id', async (c) => {
   sets.push('updated_at = ?')
   vals.push(Date.now(), itemId)
   await c.env.DB.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
-  return c.json({ ok: true })
+  
+  const responseObj = { ok: true }
+  if (updatedCategory !== undefined) responseObj.category = updatedCategory
+  return c.json(responseObj)
 })
 
 // DELETE /api/items/:id
@@ -233,17 +245,25 @@ app.post('/favorites', async (c) => {
   const { name, category } = await c.req.json()
   if (!name?.trim()) return c.json({ error: 'Name required' }, 400)
 
+  const cat = (category != null && category !== 'その他') ? category : await categorize(name.trim(), c.env)
+
   const existing = await c.env.DB.prepare(
-    'SELECT id FROM favorites WHERE tg_user_id = ? AND name = ?'
+    'SELECT id, category FROM favorites WHERE tg_user_id = ? AND name = ?'
   ).bind(userId, name.trim()).first()
-  if (existing) return c.json({ id: existing.id, name: name.trim(), category: category || 'その他' })
+  
+  if (existing) {
+    if (existing.category === 'その他' && cat !== 'その他') {
+      await c.env.DB.prepare('UPDATE favorites SET category = ? WHERE id = ?').bind(cat, existing.id).run()
+    }
+    return c.json({ id: existing.id, name: name.trim(), category: cat })
+  }
 
   const id = crypto.randomUUID()
   const now = Date.now()
   await c.env.DB.prepare(
     'INSERT INTO favorites (id, tg_user_id, name, category, created_at) VALUES (?, ?, ?, ?, ?)'
-  ).bind(id, userId, name.trim(), category || 'その他', now).run()
-  return c.json({ id, name: name.trim(), category: category || 'その他', created_at: now })
+  ).bind(id, userId, name.trim(), cat, now).run()
+  return c.json({ id, name: name.trim(), category: cat, created_at: now })
 })
 
 // DELETE /api/favorites/:id
