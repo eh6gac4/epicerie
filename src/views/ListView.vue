@@ -87,6 +87,10 @@
               <div class="item-body">
                 <span class="item-name" :class="{ 'is-done': item.checked }">{{ item.name }}</span>
                 <span v-if="item.note" class="item-note">{{ item.note }}</span>
+                <span v-if="item.isCategorizing" class="item-categorizing">
+                  <span class="recat-spinner" />
+                  分類中...
+                </span>
               </div>
 
               <!-- quantity controls -->
@@ -423,6 +427,7 @@ async function addItemFull(name, category, quantity, note) {
     unit: '',
     note: note || '',
     created_at: Date.now(),
+    isCategorizing: !category,
   }
   items.value.push(tmp)
   getWebApp()?.HapticFeedback?.impactOccurred('light')
@@ -712,6 +717,21 @@ onUnmounted(() => { clearInterval(pollTimer) })
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.item-categorizing {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--tg-hint);
+  margin-top: 4px;
+  gap: 4px;
+}
+.item-categorizing .recat-spinner {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+  margin-right: 0;
 }
 
 .item-qty {
