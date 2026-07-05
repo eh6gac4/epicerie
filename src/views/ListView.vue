@@ -505,7 +505,9 @@ async function loadList() {
 
 async function loadItems() {
   try {
-    items.value = await api.getItems(listId)
+    const fetched = await api.getItems(listId)
+    const tmps = items.value.filter(i => String(i.id).startsWith('_tmp_'))
+    items.value = [...fetched, ...tmps]
     error.value = null
   } catch (e) {
     error.value = e.message
