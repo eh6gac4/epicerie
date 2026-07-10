@@ -3,27 +3,6 @@ import { categorize, categorizeBatch } from '../lib/categorize.js'
 
 const app = new Hono().basePath('/api')
 
-// 内部通信用 (ambient-agent連携用)
-app.get('/internal/items', async (c) => {
-  const authHeader = c.req.header('Authorization')
-  if (authHeader !== `Bearer ${c.env.INTERNAL_API_KEY}`) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-
-  const tgUserId = c.req.query('tg_user_id')
-  if (!tgUserId) return c.json({ error: 'Missing tg_user_id' }, 400)
-
-  const { results } = await c.env.DB.prepare(`
-    SELECT i.name, i.category, i.quantity, i.unit, l.name as list_name
-    FROM items i
-    JOIN list_members lm ON i.list_id = lm.list_id
-    JOIN lists l ON i.list_id = l.id
-    WHERE lm.tg_user_id = ? AND i.checked = 0
-  `).bind(Number(tgUserId)).all()
-
-  return c.json(results)
-})
-
 // Auth middleware
 app.use('*', async (c, next) => {
   if (c.env.ALLOW_UNAUTH === 'true') {
