@@ -251,6 +251,18 @@
         <div v-if="toast" class="toast">{{ toast }}</div>
       </Transition>
     </Teleport>
+
+    <!-- Upload Loading Overlay -->
+    <Teleport to="body">
+      <Transition name="overlay">
+        <div v-if="isUploading" class="overlay upload-overlay">
+          <div class="upload-loading-box">
+            <div class="spinner-large" />
+            <p class="upload-loading-text">AIが画像を解析中...<br><span>(数十秒かかる場合があります)</span></p>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -1103,14 +1115,57 @@ onUnmounted(() => {
 .add-btn--disabled { opacity: 0.38; }
 .add-btn:not(.add-btn--disabled):active { opacity: 0.8; transform: scale(0.91); }
 
-/* ── Overlay / Sheet ── */
+/* ── Sheets / Overlays ── */
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.42);
+  background: rgba(0,0,0,0.4);
+  z-index: 100;
   display: flex;
   align-items: flex-end;
-  z-index: 100;
+}
+
+.upload-overlay {
+  align-items: center;
+  justify-content: center;
+  z-index: 150;
+}
+
+.upload-loading-box {
+  background: var(--tg-bg);
+  padding: 32px;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+
+.spinner-large {
+  width: 40px;
+  height: 40px;
+  border: 3px solid color-mix(in srgb, var(--tg-button) 20%, transparent);
+  border-top-color: var(--tg-button);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.upload-loading-text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.upload-loading-text span {
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--tg-hint);
+}
+
+.sheet { z-index: 100;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
