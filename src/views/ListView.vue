@@ -214,6 +214,30 @@
     </Teleport>
 
     <Teleport to="body">
+      <Transition name="overlay">
+        <div v-if="showShare" class="overlay" @click.self="showShare = false">
+          <div class="sheet">
+            <div class="sheet-handle" />
+            <h2 class="sheet-title">リストを共有</h2>
+            
+            <div class="share-info">
+              <p class="share-desc">以下の共有コードを他の人に教えるか、招待リンクを送ってください。</p>
+              <div class="share-code-box" @click="copyShareCode">
+                <span class="share-code-text">{{ list?.share_code }}</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              </div>
+            </div>
+
+            <button class="sheet-btn" @click="copyShareLink">招待リンクをコピーする</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
       <Transition name="toast">
         <div v-if="toast" class="toast">{{ toast }}</div>
       </Transition>
@@ -244,6 +268,7 @@ const editItem = ref(null)
 const editForm = reactive({ name: '', category: 'その他', quantity: '', note: '' })
 const showChecked = ref(false)
 const recategorizing = ref(false)
+const showShare = ref(false)
 
 let pollTimer = null
 let longPressTimer = null
@@ -520,7 +545,13 @@ async function loadFavorites() {
   try { favorites.value = await api.getFavorites() } catch { /* ignore */ }
 }
 
-async function share() {
+function share() {
+  if (!list.value?.share_code) return
+  showShare.value = true
+  getWebApp()?.HapticFeedback?.impactOccurred('light')
+}
+
+async function copyShareLink() {
   const code = list.value?.share_code
   if (!code) return
   const botUsername = import.meta.env.VITE_BOT_USERNAME
@@ -529,8 +560,22 @@ async function share() {
     await navigator.clipboard.writeText(url)
     showToast('リンクをコピーしました')
   } catch {
-    showToast(`コード: ${code}`)
+    showToast('コピーできませんでした')
   }
+  showShare.value = false
+  getWebApp()?.HapticFeedback?.notificationOccurred('success')
+}
+
+async function copyShareCode() {
+  const code = list.value?.share_code
+  if (!code) return
+  try {
+    await navigator.clipboard.writeText(code)
+    showToast('コードをコピーしました')
+  } catch {
+    showToast('コピーできませんでした')
+  }
+  showShare.value = false
   getWebApp()?.HapticFeedback?.notificationOccurred('success')
 }
 
@@ -1136,4 +1181,34 @@ onUnmounted(() => {
   animation: recat-spin 0.6s linear infinite;
 }
 @keyframes recat-spin { to { transform: rotate(360deg); } }
+
+/* ── Share Sheet ── */
+.share-info {
+  margin-bottom: 24px;
+}
+.share-desc {
+  font-size: 14px;
+  color: var(--tg-hint);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.share-code-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--tg-secondary-bg);
+  padding: 16px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.share-code-box:active {
+  opacity: 0.7;
+}
+.share-code-text {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-family: monospace;
+}
 </style>
