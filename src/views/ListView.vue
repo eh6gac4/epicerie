@@ -119,6 +119,7 @@
     </main>
 
     <footer class="footer">
+      <div v-if="showFavorites || showSuggestions" class="suggest-backdrop" @click="blurInput" @touchstart.passive="blurInput"></div>
       <Transition name="suggest">
         <div v-if="showFavorites || showSuggestions" class="suggest-panel">
           <template v-if="showFavorites">
@@ -292,6 +293,7 @@ const recategorizing = ref(false)
 const showShare = ref(false)
 const isUploading = ref(false)
 const fileInput = ref(null)
+const addInput = ref(null)
 
 let pollTimer = null
 let longPressTimer = null
@@ -428,6 +430,11 @@ async function toggleFavorite(item) {
 // ── Suggestions / Favorites panel ───────────────────────────
 function onInputBlur() {
   setTimeout(() => { inputFocused.value = false }, 300)
+}
+
+function blurInput() {
+  addInput.value?.blur()
+  inputFocused.value = false
 }
 
 async function addFromSuggestion(s) {
@@ -956,20 +963,18 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* ── Favorite button ── */
+/* ── Favorites ── */
 .fav-btn {
+  padding: 8px;
+  color: color-mix(in srgb, var(--tg-hint) 40%, transparent);
+  transition: color 0.2s, transform 0.2s;
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  color: color-mix(in srgb, var(--tg-hint) 45%, transparent);
-  transition: color 0.18s, transform 0.12s;
 }
 
-.fav-btn.is-fav { color: #f0a500; }
+.fav-btn.is-fav {
+  color: #ff9500;
+}
+
 .fav-btn:active { transform: scale(0.85); }
 
 /* ── Item transitions ── */
@@ -1021,6 +1026,12 @@ onUnmounted(() => {
 }
 
 /* ── Footer ── */
+.suggest-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+}
+
 .footer {
   position: relative;
   flex-shrink: 0;
@@ -1028,6 +1039,7 @@ onUnmounted(() => {
   border-top: 1px solid color-mix(in srgb, var(--tg-hint) 11%, transparent);
   padding: 10px 12px;
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 44px);
+  z-index: 10;
 }
 
 /* ── Suggest / Favorites panel ── */
@@ -1038,7 +1050,7 @@ onUnmounted(() => {
   right: 0;
   background: var(--tg-bg);
   border-top: 1px solid color-mix(in srgb, var(--tg-hint) 11%, transparent);
-  max-height: 240px;
+  max-height: 35dvh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   border-radius: 14px 14px 0 0;
