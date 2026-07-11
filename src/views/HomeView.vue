@@ -71,22 +71,60 @@
         <div v-if="showCreate" class="overlay" @click.self="closeCreate">
           <div class="sheet">
             <div class="sheet-handle" />
-            <h2 class="sheet-title">新しいリスト</h2>
-            <input
-              ref="nameInput"
-              v-model="newName"
-              class="sheet-input"
-              placeholder="リスト名…"
-              maxlength="50"
-              @keydown.enter="createList"
-            />
-            <button
-              class="sheet-btn"
-              :class="{ 'sheet-btn--muted': !newName.trim() || creating }"
-              @click="createList"
-            >
-              {{ creating ? '作成中…' : 'リストを作成' }}
-            </button>
+            
+            <div class="sheet-tabs">
+              <button
+                class="sheet-tab"
+                :class="{ 'sheet-tab--active': sheetMode === 'create' }"
+                @click="sheetMode = 'create'"
+              >
+                新しく作成
+              </button>
+              <button
+                class="sheet-tab"
+                :class="{ 'sheet-tab--active': sheetMode === 'join' }"
+                @click="sheetMode = 'join'"
+              >
+                コードで参加
+              </button>
+            </div>
+
+            <template v-if="sheetMode === 'create'">
+              <input
+                ref="nameInput"
+                v-model="newName"
+                class="sheet-input"
+                placeholder="リスト名…"
+                maxlength="50"
+                @keydown.enter="createList"
+              />
+              <button
+                class="sheet-btn"
+                :class="{ 'sheet-btn--muted': !newName.trim() || creating }"
+                @click="createList"
+              >
+                {{ creating ? '作成中…' : 'リストを作成' }}
+              </button>
+            </template>
+
+            <template v-else>
+              <input
+                ref="codeInput"
+                v-model="shareCode"
+                class="sheet-input"
+                placeholder="共有コード（英数字6文字）…"
+                maxlength="10"
+                @keydown.enter="joinListByCode"
+                style="text-transform: uppercase;"
+              />
+              <button
+                class="sheet-btn"
+                :class="{ 'sheet-btn--muted': !shareCode.trim() || joining }"
+                @click="joinListByCode"
+              >
+                {{ joining ? '参加中…' : '参加する' }}
+              </button>
+            </template>
           </div>
         </div>
       </Transition>
@@ -112,10 +150,14 @@ const lists = ref([])
 const loading = ref(true)
 const error = ref(null)
 const showCreate = ref(false)
+const sheetMode = ref('create')
 const newName = ref('')
+const shareCode = ref('')
 const creating = ref(false)
+const joining = ref(false)
 const toast = ref('')
 const nameInput = ref(null)
+const codeInput = ref(null)
 
 async function load() {
   loading.value = true
@@ -130,12 +172,14 @@ async function load() {
 }
 
 function openCreate() {
+  sheetMode.value = 'create'
   showCreate.value = true
 }
 
 function closeCreate() {
   showCreate.value = false
   newName.value = ''
+  shareCode.value = ''
 }
 
 async function createList() {
@@ -152,6 +196,23 @@ async function createList() {
     showToast(e.message)
   } finally {
     creating.value = false
+  }
+}
+
+async function joinListByCode() {
+  const code = (codeInput.value?.value ?? shareCode.value).trim()
+  if (!code || joining.value) return
+  shareCode.value = code
+  joining.value = true
+  try {
+    const list = await api.joinList(code)
+    closeCreate()
+    getWebApp()?.HapticFeedback?.notificationOccurred('success')
+    await router.push(`/list/${list.id}`)
+  } catch (e) {
+    showToast(e.message)
+  } finally {
+    joining.value = false
   }
 }
 
@@ -176,6 +237,19 @@ async function handleStartParam() {
 watch(showCreate, (val) => {
   if (val) {
     newName.value = ''
+    shareCode.value = ''
+    if (sheetMode.value === 'create') {
+      nextTick(() => nameInput.value?.focus())
+    } else {
+      nextTick(() => codeInput.value?.focus())
+    }
+  }
+})
+
+watch(sheetMode, (mode) => {
+  if (showCreate.value) {
+    if (mode === 'create') nextTick(() => nameInput.value?.focus())
+    else nextTick(() => codeInput.value?.focus())
   }
 })
 
@@ -427,6 +501,31 @@ onMounted(async () => {
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0 0 18px;
+}
+
+.sheet-tabs {
+  display: flex;
+  background: var(--tg-secondary-bg);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+
+.sheet-tab {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--tg-hint);
+  background: transparent;
+  transition: all 0.2s;
+}
+
+.sheet-tab--active {
+  background: var(--tg-bg);
+  color: var(--tg-text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .sheet-input {
