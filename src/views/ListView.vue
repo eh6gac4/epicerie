@@ -137,6 +137,15 @@
         </div>
       </Transition>
       <div class="input-row">
+        <input type="file" ref="fileInput" @change="onFileSelected" accept="image/*,application/pdf" style="display: none;" />
+        <button class="upload-btn" @click="triggerUpload" :disabled="isUploading" aria-label="画像/PDFから追加">
+          <span v-if="isUploading" class="upload-spinner" />
+          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+        </button>
         <input
           ref="addInput"
           v-model="newItem"
@@ -269,6 +278,8 @@ const editForm = reactive({ name: '', category: 'その他', quantity: '', note:
 const showChecked = ref(false)
 const recategorizing = ref(false)
 const showShare = ref(false)
+const isUploading = ref(false)
+const fileInput = ref(null)
 
 let pollTimer = null
 let longPressTimer = null
@@ -464,6 +475,36 @@ async function addItemFull(name, category, quantity, note) {
     items.value = items.value.filter(i => i.id !== tmp.id)
     showToast(e.message)
     newItem.value = name
+  }
+}
+
+// ── Upload ───────────────────────────────────────────────────
+function triggerUpload() {
+  if (isUploading.value) return
+  fileInput.value?.click()
+}
+
+async function onFileSelected(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  
+  isUploading.value = true
+  getWebApp()?.HapticFeedback?.impactOccurred('light')
+  
+  try {
+    const res = await api.uploadFile(listId, file)
+    await loadItems()
+    if (res.items && res.items.length > 0) {
+      showToast(`${res.items.length}件のアイテムを追加しました`)
+      getWebApp()?.HapticFeedback?.notificationOccurred('success')
+    } else {
+      showToast('リストが見つかりませんでした')
+    }
+  } catch (err) {
+    showToast('アップロードに失敗しました: ' + err.message)
+  } finally {
+    isUploading.value = false
+    if (fileInput.value) fileInput.value.value = ''
   }
 }
 
@@ -736,6 +777,60 @@ onUnmounted(() => {
   height: 1px;
   background: color-mix(in srgb, var(--tg-hint) 14%, transparent);
 }
+
+.recat-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tg-hint) 8%, transparent);
+  color: var(--tg-text);
+  font-size: 11px;
+  transition: opacity 0.1s;
+}
+.recat-btn:active { opacity: 0.6; }
+.recat-btn:disabled { opacity: 0.4; }
+
+.recat-icon { font-size: 10px; opacity: 0.7; }
+.recat-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid color-mix(in srgb, var(--tg-text) 20%, transparent);
+  border-top-color: var(--tg-text);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* ── Checked toggle ── */
+.checked-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 16px;
+  gap: 12px;
+}
+
+.ct-rule {
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--tg-hint) 10%, transparent);
+}
+
+.ct-label {
+  font-size: 12px;
+  color: var(--tg-hint);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ct-chevron {
+  transition: transform 0.2s;
+  opacity: 0.6;
+}
+.ct-chevron--open { transform: rotate(180deg); }
 
 /* ── Items ── */
 .item-group { position: relative; }

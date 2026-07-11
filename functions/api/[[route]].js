@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { categorize, categorizeBatch } from '../lib/categorize.js'
+import { extractItemsFromMedia } from '../lib/extractItems.js'
 
 const app = new Hono().basePath('/api')
 
@@ -147,6 +148,51 @@ app.post('/lists/:id/items', async (c) => {
   ).bind(id, listId, name.trim(), userId, now, now, cat, qty, u, n).run()
 
   return c.json({ id, list_id: listId, name: name.trim(), checked: false, added_by: userId, category: cat, quantity: qty, unit: u, note: n, created_at: now })
+})
+
+// POST /api/lists/:id/upload
+app.post('/lists/:id/upload', async (c) => {
+  const userId = c.get('userId')
+  const listId = c.req.param('id')
+  if (!await hasAccess(c.env.DB, listId, userId)) return c.json({ error: 'Not found' }, 404)
+
+  const body = await c.req.parseBody()
+  const file = body['file']
+  if (!file || typeof file === 'string') return c.json({ error: 'No file uploaded' }, 400)
+
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  const base64Data = btoa(binary)
+
+  try {
+    const itemsData = await extractItemsFromMedia(file.type, base64Data, c.env)
+    const now = Date.now()
+    const results = []
+
+    for (const item of itemsData) {
+      if (!item.name || !item.name.trim()) continue
+
+      const cat = await categorize(item.name.trim(), c.env)
+      const id = crypto.randomUUID()
+      const qty = item.quantity ? String(item.quantity) : null
+      const u = item.unit || ''
+      const n = item.note || ''
+
+      await c.env.DB.prepare(
+        'INSERT INTO items (id, list_id, name, checked, added_by, created_at, updated_at, category, quantity, unit, note) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(id, listId, item.name.trim(), userId, now, now, cat, qty, u, n).run()
+
+      results.push({ id, list_id: listId, name: item.name.trim(), checked: false, added_by: userId, category: cat, quantity: qty, unit: u, note: n, created_at: now })
+    }
+
+    return c.json({ items: results })
+  } catch (e) {
+    return c.json({ error: e.message }, 500)
+  }
 })
 
 // PATCH /api/items/:id

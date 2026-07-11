@@ -101,4 +101,19 @@ export const api = {
   addFavorite: (name, category) => request('POST', '/api/favorites', { name, category }),
   removeFavorite: (id) => request('DELETE', `/api/favorites/${id}`),
   recategorize: (listId) => request('POST', `/api/lists/${listId}/recategorize`),
+  uploadFile: async (listId, file) => {
+    const tg = getWebApp()
+    const session = getStoredSession()
+    const headers = { 'X-Telegram-Init-Data': tg?.initData ?? '' }
+    if (session) headers['X-Session-Token'] = session.token
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch(`/api/lists/${listId}/upload`, { method: 'POST', headers, body: formData })
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`
+      try { const d = await res.json(); if (d?.error) msg += `: ${d.error}` } catch {}
+      throw new Error(msg)
+    }
+    return res.json()
+  },
 }
