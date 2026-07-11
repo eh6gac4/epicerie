@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { Buffer } from 'node:buffer'
 import { categorize, categorizeBatch } from '../lib/categorize.js'
 import { extractItemsFromMedia } from '../lib/extractItems.js'
 
@@ -161,12 +162,7 @@ app.post('/lists/:id/upload', async (c) => {
   if (!file || typeof file === 'string') return c.json({ error: 'No file uploaded' }, 400)
 
   const buffer = await file.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  const base64Data = btoa(binary)
+  const base64Data = Buffer.from(buffer).toString('base64')
 
   try {
     const itemsData = await extractItemsFromMedia(file.type, base64Data, c.env)
