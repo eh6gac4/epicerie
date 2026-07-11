@@ -413,7 +413,7 @@ async function toggleFavorite(item) {
       showToast(e.message)
     }
   } else {
-    const tmp = { id: '_fav_' + Date.now(), name: item.name, category: item.category || 'その他' }
+    const tmp = { id: '_fav_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7), name: item.name, category: item.category || 'その他' }
     favorites.value.push(tmp)
     getWebApp()?.HapticFeedback?.impactOccurred('light')
     try {
@@ -472,8 +472,9 @@ async function quickAdd() {
 }
 
 async function addItemFull(name, category, quantity, note) {
+  const tmpId = '_tmp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
   const tmp = {
-    id: '_tmp_' + Date.now(),
+    id: tmpId,
     list_id: listId,
     name,
     checked: false,
