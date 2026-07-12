@@ -7,15 +7,22 @@
         </svg>
       </button>
       <span class="header-title">{{ list?.name ?? '…' }}</span>
-      <button class="share-btn" @click="share" :disabled="!list" aria-label="シェア">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="18" cy="5" r="3"/>
-          <circle cx="6" cy="12" r="3"/>
-          <circle cx="18" cy="19" r="3"/>
-          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-        </svg>
-      </button>
+      <div class="header-actions">
+        <button class="fav-list-btn" @click="showFavSheet = true" aria-label="よく使うもの">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+        </button>
+        <button class="share-btn" @click="share" :disabled="!list" aria-label="シェア">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="5" r="3"/>
+            <circle cx="6" cy="12" r="3"/>
+            <circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+        </button>
+      </div>
     </header>
 
     <main class="main">
@@ -119,22 +126,13 @@
     </main>
 
     <footer class="footer">
-      <div v-if="showFavorites || showSuggestions" class="suggest-backdrop" @click="blurInput" @touchstart.passive="blurInput"></div>
+      <div v-if="showSuggestions" class="suggest-backdrop" @click="blurInput" @touchstart.passive="blurInput"></div>
       <Transition name="suggest">
-        <div v-if="showFavorites || showSuggestions" class="suggest-panel">
-          <template v-if="showFavorites">
-            <div class="suggest-section-label">よく買うもの</div>
-            <div v-for="fav in favorites" :key="fav.id" class="suggest-item" @click="addFromFavorite(fav)">
-              <span class="suggest-name">{{ fav.name }}</span>
-              <span class="suggest-cat">{{ fav.category }}</span>
-            </div>
-          </template>
-          <template v-else>
-            <div v-for="s in filteredSuggestions" :key="s.name" class="suggest-item" @click="addFromSuggestion(s)">
-              <span class="suggest-name">{{ s.name }}</span>
-              <span class="suggest-cat">{{ s.category }}</span>
-            </div>
-          </template>
+        <div v-if="showSuggestions" class="suggest-panel">
+          <div v-for="s in filteredSuggestions" :key="s.name" class="suggest-item" @click="addFromSuggestion(s)">
+            <span class="suggest-name">{{ s.name }}</span>
+            <span class="suggest-cat">{{ s.category }}</span>
+          </div>
         </div>
       </Transition>
       <div class="input-row">
@@ -247,6 +245,34 @@
       </Transition>
     </Teleport>
 
+    <!-- Favorites sheet -->
+    <Teleport to="body">
+      <Transition name="overlay">
+        <div v-if="showFavSheet" class="overlay" @click.self="showFavSheet = false">
+          <div class="sheet">
+            <div class="sheet-handle" />
+            <h2 class="sheet-title">よく使うもの</h2>
+            <div class="fav-list-container">
+              <div v-if="favorites.length === 0" class="fav-empty">
+                よく使うものがありません。<br>アイテム横の星マークをタップして追加できます。
+              </div>
+              <div v-else class="fav-grid">
+                <div v-for="fav in favorites" :key="fav.id" class="fav-grid-item" @click="addFromFavorite(fav)">
+                  <span class="fav-grid-name">{{ fav.name }}</span>
+                  <button class="fav-grid-del" @click.stop="toggleFavorite(fav)" aria-label="お気に入りから削除">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button class="sheet-btn" @click="showFavSheet = false">閉じる</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <Teleport to="body">
       <Transition name="toast">
         <div v-if="toast" class="toast">{{ toast }}</div>
@@ -291,6 +317,7 @@ const editForm = reactive({ name: '', category: 'その他', quantity: '', note:
 const showChecked = ref(false)
 const recategorizing = ref(false)
 const showShare = ref(false)
+const showFavSheet = ref(false)
 const isUploading = ref(false)
 const fileInput = ref(null)
 const addInput = ref(null)
@@ -332,7 +359,6 @@ const filteredSuggestions = computed(() => {
 })
 
 const showSuggestions = computed(() => inputFocused.value && !!newItem.value.trim() && filteredSuggestions.value.length > 0)
-const showFavorites = computed(() => inputFocused.value && !newItem.value.trim() && favorites.value.length > 0)
 
 // ── Long press ───────────────────────────────────────────────
 function onPointerDown(item, e) {
@@ -702,6 +728,28 @@ onUnmounted(() => {
   background: var(--tg-bg);
   z-index: 10;
   border-bottom: 1px solid color-mix(in srgb, var(--tg-hint) 11%, transparent);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 4px;
+}
+
+.fav-list-btn {
+  padding: 8px;
+  color: #ff9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.fav-list-btn:active {
+  transform: scale(0.9);
+  background: color-mix(in srgb, #ff9500 20%, transparent);
 }
 
 .back-btn {
@@ -1184,15 +1232,70 @@ onUnmounted(() => {
 }
 
 .sheet {
-  width: 100%;
   background: var(--tg-bg);
-  border-radius: 22px 22px 0 0;
-  padding: 10px 20px;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
-  max-height: 85dvh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  width: 100%;
+  max-height: 90vh;
+  border-radius: 20px 20px 0 0;
+  padding: 16px 20px 32px;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 32px);
   animation: sheetUp 0.32s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* ── Favorites Sheet ── */
+.fav-list-container {
+  max-height: 50dvh;
+  overflow-y: auto;
+  margin: 16px 0;
+  padding: 0 4px;
+}
+
+.fav-empty {
+  text-align: center;
+  color: var(--tg-hint);
+  font-size: 14px;
+  padding: 24px 0;
+  line-height: 1.6;
+}
+
+.fav-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fav-grid-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--tg-secondary-bg);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--tg-hint) 10%, transparent);
+  transition: transform 0.1s;
+}
+
+.fav-grid-item:active {
+  transform: scale(0.97);
+}
+
+.fav-grid-name {
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--tg-text);
+}
+
+.fav-grid-del {
+  padding: 8px;
+  margin: -8px;
+  color: var(--tg-hint);
+  transition: color 0.2s;
+}
+
+.fav-grid-del:active {
+  color: #ff3b30;
 }
 
 @keyframes sheetUp {
