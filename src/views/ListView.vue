@@ -8,6 +8,12 @@
       </button>
       <span class="header-title">{{ list?.name ?? '…' }}</span>
       <div class="header-actions">
+        <button class="keep-checked-btn" :class="{ 'is-active': keepCheckedMode }" @click="keepCheckedMode = !keepCheckedMode" aria-label="チェックしたものを消さない">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 11 12 14 22 4"></polyline>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+        </button>
         <button class="fav-list-btn" @click="showFavSheet = true" aria-label="よく使うもの">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
@@ -322,6 +328,14 @@ const isUploading = ref(false)
 const fileInput = ref(null)
 const addInput = ref(null)
 
+const keepCheckedMode = ref(localStorage.getItem('keepCheckedMode') === 'true')
+watch(keepCheckedMode, (newVal) => {
+  localStorage.setItem('keepCheckedMode', newVal)
+  if (newVal) {
+    showToast('チェック維持モードON')
+  }
+})
+
 let pollTimer = null
 let longPressTimer = null
 let longPressTriggered = false
@@ -334,7 +348,7 @@ const checkedCount = computed(() => items.value.filter(i => i.checked).length)
 const groupedItems = computed(() => {
   const byCategory = {}
   for (const item of items.value) {
-    if (!showChecked.value && item.checked) continue
+    if (!keepCheckedMode.value && !showChecked.value && item.checked) continue
     const cat = item.category || 'その他'
     if (!byCategory[cat]) byCategory[cat] = []
     byCategory[cat].push(item)
@@ -344,7 +358,7 @@ const groupedItems = computed(() => {
   return [...known, ...unknown].map(cat => ({
     category: cat,
     items: [...byCategory[cat]].sort((a, b) => {
-      if (a.checked !== b.checked) return a.checked ? 1 : -1
+      if (!keepCheckedMode.value && a.checked !== b.checked) return a.checked ? 1 : -1
       return (a.created_at || 0) - (b.created_at || 0)
     }),
   }))
@@ -735,6 +749,25 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   margin-right: 4px;
+}
+
+.keep-checked-btn {
+  padding: 8px;
+  color: color-mix(in srgb, var(--tg-hint) 40%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s, color 0.2s;
+}
+
+.keep-checked-btn.is-active {
+  color: var(--tg-button);
+}
+
+.keep-checked-btn:active {
+  transform: scale(0.9);
+  background: color-mix(in srgb, var(--tg-hint) 10%, transparent);
 }
 
 .fav-list-btn {
