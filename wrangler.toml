@@ -8,6 +8,9 @@ binding = "DB"
 database_name = "grocery-list-db"
 database_id = "df6ec9f6-01a4-4f57-a5cb-834f25e179e1"
 
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "grocery-list-attachments"
 # Secrets (set via `wrangler secret put TELEGRAM_BOT_TOKEN`):
 #   TELEGRAM_BOT_TOKEN — bot token from @BotFather
 #

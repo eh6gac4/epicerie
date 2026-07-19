@@ -42,3 +42,15 @@ CREATE INDEX IF NOT EXISTS idx_items_list ON items(list_id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON list_members(tg_user_id);
 CREATE INDEX IF NOT EXISTS idx_lists_code ON lists(share_code);
 CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(tg_user_id);
+
+CREATE TABLE IF NOT EXISTS item_attachments (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_type TEXT NOT NULL,
+  file_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_item_attachments_item ON item_attachments(item_id);
