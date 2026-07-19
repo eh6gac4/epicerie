@@ -118,7 +118,15 @@ export const api = {
     return request('DELETE', `/api/attachments/${attachmentId}`)
   },
   getAttachmentUrl(attachmentId) {
-    return `/api/attachments/${attachmentId}/download`
+    const tg = getWebApp()
+    const session = getStoredSession()
+    const url = new URL(`/api/attachments/${attachmentId}/download`, window.location.origin)
+    if (session) {
+      url.searchParams.set('session_token', session.token)
+    } else if (tg?.initData) {
+      url.searchParams.set('init_data', tg.initData)
+    }
+    return url.pathname + url.search + url.hash
   },
   recategorize: (listId) => request('POST', `/api/lists/${listId}/recategorize`),
   uploadFile: async (listId, file) => {

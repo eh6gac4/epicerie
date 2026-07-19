@@ -16,7 +16,7 @@ app.use('*', async (c, next) => {
   if (!botToken) return c.json({ error: 'Server misconfigured' }, 500)
 
   // 1. Try session token
-  const sessionToken = c.req.header('X-Session-Token')
+  const sessionToken = c.req.header('X-Session-Token') || c.req.query('session_token')
   if (sessionToken) {
     const result = await verifySession(sessionToken, botToken)
     if (result.valid) {
@@ -27,7 +27,7 @@ app.use('*', async (c, next) => {
   }
 
   // 2. Try Telegram initData
-  const initData = c.req.header('X-Telegram-Init-Data')
+  const initData = c.req.header('X-Telegram-Init-Data') || c.req.query('init_data')
   if (!initData) return c.json({ error: 'Unauthorized' }, 401)
 
   const result = await validateInitData(initData, botToken)
