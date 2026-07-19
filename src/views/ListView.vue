@@ -141,7 +141,7 @@
       <div v-if="showSuggestions" class="suggest-backdrop" @click="blurInput" @touchstart.passive="blurInput"></div>
       <Transition name="suggest">
         <div v-if="showSuggestions" class="suggest-panel">
-          <div v-for="s in filteredSuggestions" :key="s.name" class="suggest-item" @click="addFromSuggestion(s)">
+          <div v-for="s in filteredSuggestions" :key="s.name" class="suggest-item" @mousedown.prevent @click="addFromSuggestion(s)">
             <span class="suggest-name">{{ s.name }}</span>
             <span class="suggest-cat">{{ s.category }}</span>
           </div>
@@ -1260,6 +1260,7 @@ onUnmounted(() => {
   bottom: 100%;
   left: 0;
   right: 0;
+  z-index: 10;
   background: var(--tg-bg);
   border-top: 1px solid color-mix(in srgb, var(--tg-hint) 11%, transparent);
   max-height: 35dvh;
