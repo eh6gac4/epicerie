@@ -122,7 +122,11 @@ app.get('/lists/:id/items', async (c) => {
   if (!await hasAccess(c.env.DB, listId, userId)) return c.json({ error: 'Not found' }, 404)
 
   const { results } = await c.env.DB.prepare(
-    'SELECT id, list_id, name, checked, added_by, created_at, category, quantity, unit, note FROM items WHERE list_id = ? ORDER BY created_at ASC'
+    `SELECT i.id, i.list_id, i.name, i.checked, i.added_by, i.created_at, i.category, i.quantity, i.unit, i.note,
+            (SELECT COUNT(*) FROM item_attachments a WHERE a.item_id = i.id) AS attachment_count
+     FROM items i 
+     WHERE i.list_id = ? 
+     ORDER BY i.created_at ASC`
   ).bind(listId).all()
   return c.json(results.map(r => ({ ...r, checked: !!r.checked })))
 })
@@ -417,4 +421,86 @@ async function validateInitData(initData, botToken) {
   }
 }
 
+// GET /api/items/:id/attachments
+app.get('/items/:id/attachments', async (c) => {
+  const userId = c.get('userId')
+  const itemId = c.req.param('id')
+  
+  const item = await c.env.DB.prepare('SELECT list_id FROM items WHERE id = ?').bind(itemId).first()
+  if (!item) return c.json({ error: 'Not found' }, 404)
+  if (!await hasAccess(c.env.DB, item.list_id, userId)) return c.json({ error: 'Forbidden' }, 403)
+
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, file_name, file_type, created_at FROM item_attachments WHERE item_id = ? ORDER BY created_at ASC'
+  ).bind(itemId).all()
+  
+  return c.json(results)
+})
+
+// POST /api/items/:id/attachments
+app.post('/items/:id/attachments', async (c) => {
+  const userId = c.get('userId')
+  const itemId = c.req.param('id')
+  
+  const item = await c.env.DB.prepare('SELECT list_id FROM items WHERE id = ?').bind(itemId).first()
+  if (!item) return c.json({ error: 'Not found' }, 404)
+  if (!await hasAccess(c.env.DB, item.list_id, userId)) return c.json({ error: 'Forbidden' }, 403)
+
+  const body = await c.req.parseBody()
+  const file = body['file']
+  if (!file || typeof file === 'string') return c.json({ error: 'No file uploaded' }, 400)
+
+  const ext = file.name.split('.').pop()
+  const id = crypto.randomUUID()
+  const fileKey = `attachments/${itemId}/${id}.${ext}`
+  
+  await c.env.BUCKET.put(fileKey, await file.arrayBuffer(), {
+    httpMetadata: { contentType: file.type }
+  })
+
+  const now = Date.now()
+  await c.env.DB.prepare(
+    'INSERT INTO item_attachments (id, item_id, file_name, file_type, file_key, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(id, itemId, file.name, file.type, fileKey, now).run()
+
+  return c.json({ id, item_id: itemId, file_name: file.name, file_type: file.type, created_at: now })
+})
+
+// GET /api/attachments/:id/download
+app.get('/attachments/:id/download', async (c) => {
+  const userId = c.get('userId')
+  const attachmentId = c.req.param('id')
+  
+  const attachment = await c.env.DB.prepare(
+    'SELECT a.file_key, i.list_id FROM item_attachments a JOIN items i ON a.item_id = i.id WHERE a.id = ?'
+  ).bind(attachmentId).first()
+  if (!attachment) return c.json({ error: 'Not found' }, 404)
+  if (!await hasAccess(c.env.DB, attachment.list_id, userId)) return c.json({ error: 'Forbidden' }, 403)
+
+  const object = await c.env.BUCKET.get(attachment.file_key)
+  if (!object) return c.json({ error: 'File not found in storage' }, 404)
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  headers.set('etag', object.httpEtag)
+
+  return new Response(object.body, { headers })
+})
+
+// DELETE /api/attachments/:id
+app.delete('/attachments/:id', async (c) => {
+  const userId = c.get('userId')
+  const attachmentId = c.req.param('id')
+  
+  const attachment = await c.env.DB.prepare(
+    'SELECT a.file_key, i.list_id FROM item_attachments a JOIN items i ON a.item_id = i.id WHERE a.id = ?'
+  ).bind(attachmentId).first()
+  if (!attachment) return c.json({ error: 'Not found' }, 404)
+  if (!await hasAccess(c.env.DB, attachment.list_id, userId)) return c.json({ error: 'Forbidden' }, 403)
+
+  await c.env.BUCKET.delete(attachment.file_key)
+  await c.env.DB.prepare('DELETE FROM item_attachments WHERE id = ?').bind(attachmentId).run()
+  
+  return c.json({ ok: true })
+})
 export const onRequest = (ctx) => app.fetch(ctx.request, ctx.env, ctx)

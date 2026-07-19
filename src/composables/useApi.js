@@ -100,6 +100,26 @@ export const api = {
   getFavorites: () => request('GET', '/api/favorites'),
   addFavorite: (name, category) => request('POST', '/api/favorites', { name, category }),
   removeFavorite: (id) => request('DELETE', `/api/favorites/${id}`),
+  async getItemAttachments(itemId) {
+    return request('GET', `/api/items/${itemId}/attachments`)
+  },
+  async uploadItemAttachment(itemId, file) {
+    const tg = getWebApp()
+    const session = getStoredSession()
+    const headers = { 'X-Telegram-Init-Data': tg?.initData ?? '' }
+    if (session) headers['X-Session-Token'] = session.token
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch(`/api/items/${itemId}/attachments`, { method: 'POST', headers, body: formData })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
+  async deleteAttachment(attachmentId) {
+    return request('DELETE', `/api/attachments/${attachmentId}`)
+  },
+  getAttachmentUrl(attachmentId) {
+    return `/api/attachments/${attachmentId}/download`
+  },
   recategorize: (listId) => request('POST', `/api/lists/${listId}/recategorize`),
   uploadFile: async (listId, file) => {
     const tg = getWebApp()
