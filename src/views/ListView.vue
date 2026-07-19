@@ -1067,9 +1067,8 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--tg-hint);
   margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .item-categorizing {
