@@ -71,6 +71,7 @@ app.post('/lists', async (c) => {
       .bind(id, userId, now),
   ])
 
+  logUserAction(c, 'CREATE_LIST', id, null, { name: name.trim() })
   return c.json({ id, name: name.trim(), share_code: shareCode, created_by: userId })
 })
 
@@ -91,6 +92,7 @@ app.post('/lists/join', async (c) => {
       .bind(list.id, userId, Date.now()).run()
   }
 
+  logUserAction(c, 'JOIN_LIST', list.id)
   return c.json({ id: list.id, name: list.name })
 })
 
@@ -112,6 +114,8 @@ app.delete('/lists/:id', async (c) => {
   const list = await c.env.DB.prepare('SELECT created_by FROM lists WHERE id = ?').bind(listId).first()
   if (!list || list.created_by !== userId) return c.json({ error: 'Forbidden' }, 403)
   await c.env.DB.prepare('DELETE FROM lists WHERE id = ?').bind(listId).run()
+  
+  logUserAction(c, 'DELETE_LIST', listId)
   return c.json({ ok: true })
 })
 
@@ -152,6 +156,7 @@ app.post('/lists/:id/items', async (c) => {
     'INSERT INTO items (id, list_id, name, checked, added_by, created_at, updated_at, category, quantity, unit, note) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(id, listId, name.trim(), userId, now, now, cat, qty, u, n).run()
 
+  logUserAction(c, 'CREATE_ITEM', listId, id, { name: name.trim() })
   return c.json({ id, list_id: listId, name: name.trim(), checked: false, added_by: userId, category: cat, quantity: qty, unit: u, note: n, created_at: now })
 })
 
@@ -189,6 +194,7 @@ app.post('/lists/:id/upload', async (c) => {
       results.push({ id, list_id: listId, name: item.name.trim(), checked: false, added_by: userId, category: cat, quantity: qty, unit: u, note: n, created_at: now })
     }
 
+    logUserAction(c, 'CREATE_ITEM_BATCH', listId, null, { count: results.length })
     return c.json({ items: results })
   } catch (e) {
     return c.json({ error: e.message }, 500)
@@ -228,6 +234,7 @@ app.patch('/items/:id', async (c) => {
   vals.push(Date.now(), itemId)
   await c.env.DB.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
   
+  logUserAction(c, 'UPDATE_ITEM', item.list_id, itemId, body)
   const responseObj = { ok: true }
   if (updatedCategory !== undefined) responseObj.category = updatedCategory
   return c.json(responseObj)
@@ -241,6 +248,7 @@ app.delete('/items/:id', async (c) => {
   if (!item) return c.json({ error: 'Not found' }, 404)
   if (!await hasAccess(c.env.DB, item.list_id, userId)) return c.json({ error: 'Forbidden' }, 403)
   await c.env.DB.prepare('DELETE FROM items WHERE id = ?').bind(itemId).run()
+  logUserAction(c, 'DELETE_ITEM', item.list_id, itemId)
   return c.json({ ok: true })
 })
 
@@ -273,6 +281,7 @@ app.post('/lists/:id/recategorize', async (c) => {
     )
   }
 
+  logUserAction(c, 'RECATEGORIZE_ITEMS', listId, null, { count: updates.length })
   return c.json({ updated: updates.length })
 })
 
@@ -300,6 +309,7 @@ app.post('/favorites', async (c) => {
   if (existing) {
     if (existing.category === 'その他' && cat !== 'その他') {
       await c.env.DB.prepare('UPDATE favorites SET category = ? WHERE id = ?').bind(cat, existing.id).run()
+      logUserAction(c, 'UPDATE_FAVORITE', null, existing.id, { category: cat })
     }
     return c.json({ id: existing.id, name: name.trim(), category: cat })
   }
@@ -309,6 +319,7 @@ app.post('/favorites', async (c) => {
   await c.env.DB.prepare(
     'INSERT INTO favorites (id, tg_user_id, name, category, created_at) VALUES (?, ?, ?, ?, ?)'
   ).bind(id, userId, name.trim(), cat, now).run()
+  logUserAction(c, 'CREATE_FAVORITE', null, id, { name: name.trim() })
   return c.json({ id, name: name.trim(), category: cat, created_at: now })
 })
 
@@ -317,6 +328,7 @@ app.delete('/favorites/:id', async (c) => {
   const userId = c.get('userId')
   const favId = c.req.param('id')
   await c.env.DB.prepare('DELETE FROM favorites WHERE id = ? AND tg_user_id = ?').bind(favId, userId).run()
+  logUserAction(c, 'DELETE_FAVORITE', null, favId)
   return c.json({ ok: true })
 })
 
@@ -463,6 +475,7 @@ app.post('/items/:id/attachments', async (c) => {
     'INSERT INTO item_attachments (id, item_id, file_name, file_type, file_key, created_at) VALUES (?, ?, ?, ?, ?, ?)'
   ).bind(id, itemId, file.name, file.type, fileKey, now).run()
 
+  logUserAction(c, 'CREATE_ATTACHMENT', item.list_id, itemId, { file_name: file.name, file_type: file.type })
   return c.json({ id, item_id: itemId, file_name: file.name, file_type: file.type, created_at: now })
 })
 
@@ -493,7 +506,7 @@ app.delete('/attachments/:id', async (c) => {
   const attachmentId = c.req.param('id')
   
   const attachment = await c.env.DB.prepare(
-    'SELECT a.file_key, i.list_id FROM item_attachments a JOIN items i ON a.item_id = i.id WHERE a.id = ?'
+    'SELECT a.file_key, a.item_id, i.list_id FROM item_attachments a JOIN items i ON a.item_id = i.id WHERE a.id = ?'
   ).bind(attachmentId).first()
   if (!attachment) return c.json({ error: 'Not found' }, 404)
   if (!await hasAccess(c.env.DB, attachment.list_id, userId)) return c.json({ error: 'Forbidden' }, 403)
@@ -501,6 +514,26 @@ app.delete('/attachments/:id', async (c) => {
   await c.env.BUCKET.delete(attachment.file_key)
   await c.env.DB.prepare('DELETE FROM item_attachments WHERE id = ?').bind(attachmentId).run()
   
+  logUserAction(c, 'DELETE_ATTACHMENT', attachment.list_id, attachment.item_id, { file_key: attachment.file_key })
   return c.json({ ok: true })
 })
+async function logUserAction(c, action, listId = null, itemId = null, details = null) {
+  try {
+    const userId = c.get('userId')
+    const id = crypto.randomUUID()
+    const now = Date.now()
+    const stmt = c.env.DB.prepare(
+      'INSERT INTO user_logs (id, tg_user_id, action, list_id, item_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(id, userId, action, listId, itemId, details ? JSON.stringify(details) : null, now)
+    
+    if (c.executionCtx && c.executionCtx.waitUntil) {
+      c.executionCtx.waitUntil(stmt.run())
+    } else {
+      await stmt.run()
+    }
+  } catch (e) {
+    console.error('Failed to log action:', e)
+  }
+}
+
 export const onRequest = (ctx) => app.fetch(ctx.request, ctx.env, ctx)
