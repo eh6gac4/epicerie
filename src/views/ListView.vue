@@ -159,7 +159,8 @@
         </button>
         <input
           ref="addInput"
-          v-model="newItem"
+          :value="newItem"
+          @input="newItem = $event.target.value"
           class="add-input"
           placeholder="アイテムを追加…"
           maxlength="100"
@@ -447,10 +448,16 @@ const groupedItems = computed(() => {
 
 const favoriteNames = computed(() => new Set(favorites.value.map(f => f.name)))
 
+function toHiragana(str) {
+  return str.replace(/[\u30a1-\u30f6]/g, match =>
+    String.fromCharCode(match.charCodeAt(0) - 0x60)
+  )
+}
+
 const filteredSuggestions = computed(() => {
-  const q = newItem.value.trim()
+  const q = toHiragana(newItem.value.trim().toLowerCase())
   if (!q) return []
-  return SUGGESTIONS.filter(s => s.name.includes(q)).slice(0, 6)
+  return SUGGESTIONS.filter(s => toHiragana(s.name.toLowerCase()).includes(q)).slice(0, 6)
 })
 
 const showSuggestions = computed(() => inputFocused.value && !!newItem.value.trim() && filteredSuggestions.value.length > 0)
@@ -595,7 +602,8 @@ async function recategorizeOthers() {
   }
 }
 
-async function quickAdd() {
+async function quickAdd(e) {
+  if (e && e.isComposing) return
   const name = newItem.value.trim()
   if (!name) return
   newItem.value = ''
