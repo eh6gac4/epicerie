@@ -141,7 +141,13 @@
       <div v-if="showSuggestions" class="suggest-backdrop" @click="blurInput" @touchstart.passive="blurInput"></div>
       <Transition name="suggest">
         <div v-if="showSuggestions" class="suggest-panel">
-          <div v-for="s in filteredSuggestions" :key="s.name" class="suggest-item" @mousedown.prevent @click="addFromSuggestion(s)">
+          <div v-for="s in filteredSuggestions" :key="s.name" class="suggest-item"
+            @mousedown.prevent
+            @click="addFromSuggestion(s)"
+            @touchstart="onSuggestTouchStart"
+            @touchmove="onSuggestTouchMove"
+            @touchend="onSuggestTouchEnd(s, $event)"
+          >
             <span class="suggest-name">{{ s.name }}</span>
             <span class="suggest-cat">{{ s.category }}</span>
           </div>
@@ -573,6 +579,28 @@ function onInputBlur() {
 function blurInput() {
   addInput.value?.blur()
   inputFocused.value = false
+}
+
+// --- Tap detection for suggest panel ---
+let suggestTouchStartY = 0
+let suggestTouchMoved = false
+
+function onSuggestTouchStart(e) {
+  suggestTouchStartY = e.touches[0].clientY
+  suggestTouchMoved = false
+}
+
+function onSuggestTouchMove(e) {
+  if (Math.abs(e.touches[0].clientY - suggestTouchStartY) > 10) {
+    suggestTouchMoved = true
+  }
+}
+
+function onSuggestTouchEnd(s, e) {
+  if (!suggestTouchMoved) {
+    e.preventDefault()
+    addFromSuggestion(s)
+  }
 }
 
 async function addFromSuggestion(s) {
