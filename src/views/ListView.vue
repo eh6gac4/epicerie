@@ -605,13 +605,11 @@ function onSuggestTouchEnd(s, e) {
 
 async function addFromSuggestion(s) {
   newItem.value = ''
-  inputFocused.value = false
   await addItemFull(s.name, s.category, null, '')
 }
 
 async function addFromFavorite(fav) {
   newItem.value = ''
-  inputFocused.value = false
   await addItemFull(fav.name, fav.category, null, '')
 }
 
