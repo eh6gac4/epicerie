@@ -86,16 +86,14 @@
               :key="item.id"
               class="item"
               :class="{ 'item--done': item.checked }"
-              @click="handleItemClick(item)"
-              @pointerdown="onPointerDown(item, $event)"
-              @pointermove="onPointerMove($event)"
-              @pointerup="onPointerUp"
-              @pointercancel="onPointerUp"
+              @click="openEdit(item)"
             >
-              <div class="checkbox" :class="{ 'is-checked': item.checked }">
-                <svg v-if="item.checked" width="11" height="9" viewBox="0 0 11 9" fill="none">
-                  <path d="M1 4.5L4 7.5L10 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+              <div class="checkbox-tap" @click.stop="toggleItem(item)">
+                <div class="checkbox" :class="{ 'is-checked': item.checked }">
+                  <svg v-if="item.checked" width="11" height="9" viewBox="0 0 11 9" fill="none">
+                    <path d="M1 4.5L4 7.5L10 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
               </div>
               <div class="item-body">
                 <span class="item-name" :class="{ 'is-done': item.checked }">{{ item.name }}</span>
@@ -113,8 +111,7 @@
               </div>
 
               <!-- quantity controls -->
-              <div v-if="isNumericQty(item)" class="qty-ctrl"
-                @click.stop @pointerdown.stop @pointerup.stop @pointermove.stop>
+              <div v-if="isNumericQty(item)" class="qty-ctrl" @click.stop>
                 <button class="qty-btn" @click="decrementQty(item)">−</button>
                 <span class="qty-val">{{ item.quantity }}</span>
                 <button class="qty-btn" @click="incrementQty(item)">＋</button>
@@ -123,8 +120,7 @@
 
               <!-- favorite button -->
               <button class="fav-btn" :class="{ 'is-fav': isFavorite(item) }"
-                @click.stop="toggleFavorite(item)"
-                @pointerdown.stop @pointerup.stop @pointermove.stop>
+                @click.stop="toggleFavorite(item)">
                 <svg width="15" height="15" viewBox="0 0 24 24"
                   :fill="isFavorite(item) ? 'currentColor' : 'none'"
                   stroke="currentColor" stroke-width="2" stroke-linejoin="round">
@@ -425,9 +421,6 @@ watch(keepCheckedMode, (newVal) => {
 })
 
 let pollTimer = null
-let longPressTimer = null
-let longPressTriggered = false
-let pressStart = { x: 0, y: 0 }
 
 const CATEGORY_ORDER = ['野菜・果物', '肉・魚', '乳製品・卵', '冷凍食品', 'パン・穀物', '飲み物', '調味料', '日用品', 'その他']
 
@@ -467,30 +460,6 @@ const filteredSuggestions = computed(() => {
 })
 
 const showSuggestions = computed(() => inputFocused.value && !!newItem.value.trim() && filteredSuggestions.value.length > 0)
-
-// ── Long press ───────────────────────────────────────────────
-function onPointerDown(item, e) {
-  longPressTriggered = false
-  pressStart = { x: e.clientX, y: e.clientY }
-  longPressTimer = setTimeout(() => {
-    longPressTriggered = true
-    openEdit(item)
-    getWebApp()?.HapticFeedback?.impactOccurred('medium')
-  }, 500)
-}
-
-function onPointerMove(e) {
-  const dx = e.clientX - pressStart.x
-  const dy = e.clientY - pressStart.y
-  if (Math.sqrt(dx * dx + dy * dy) > 6) clearTimeout(longPressTimer)
-}
-
-function onPointerUp() { clearTimeout(longPressTimer) }
-
-function handleItemClick(item) {
-  if (longPressTriggered) { longPressTriggered = false; return }
-  toggleItem(item)
-}
 
 // ── Edit sheet ───────────────────────────────────────────────
 async function openEdit(item) {
@@ -1114,6 +1083,14 @@ onUnmounted(() => {
 
 .item:active { background: color-mix(in srgb, var(--tg-hint) 7%, transparent); }
 .item--done { opacity: 0.38; }
+
+.checkbox-tap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  margin: -10px;
+}
 
 .checkbox {
   flex-shrink: 0;
