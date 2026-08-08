@@ -13,6 +13,9 @@ vi.mock('../composables/useApi.js', () => ({
   api: {
     getItems: vi.fn().mockResolvedValue([]),
     addItem: vi.fn().mockResolvedValue({ id: '1', name: 'にんじん', category: '野菜' }),
+    updateItem: vi.fn().mockResolvedValue({ ok: true }),
+    deleteItem: vi.fn().mockResolvedValue({ ok: true }),
+    getItemAttachments: vi.fn().mockResolvedValue([]),
     getFavorites: vi.fn().mockResolvedValue([]),
     getHistory: vi.fn().mockResolvedValue([]),
     getLogs: vi.fn().mockResolvedValue([]),
@@ -23,7 +26,11 @@ vi.mock('../composables/useApi.js', () => ({
 // Mock Telegram
 vi.mock('../composables/useTelegram.js', () => ({
   getWebApp: () => ({
-    HapticFeedback: { impactOccurred: vi.fn() },
+    HapticFeedback: {
+      impactOccurred: vi.fn(),
+      selectionChanged: vi.fn(),
+      notificationOccurred: vi.fn()
+    },
     MainButton: { show: vi.fn(), hide: vi.fn(), onClick: vi.fn(), offClick: vi.fn(), showProgress: vi.fn(), hideProgress: vi.fn() }
   })
 }))
@@ -91,5 +98,52 @@ describe('ListView.vue - Suggest Panel', () => {
     await new Promise(resolve => setTimeout(resolve, 10))
     
     expect(api.addItem).not.toHaveBeenCalled()
+  })
+})
+
+describe('ListView.vue - Item row tap', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('toggles checked state when tapping the checkbox only', async () => {
+    const { api } = await import('../composables/useApi.js')
+    api.getItems.mockResolvedValue([
+      { id: 1, name: 'にんじん', checked: 0, category: '野菜・果物' }
+    ])
+
+    const wrapper = mount(ListView)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    const checkboxTap = wrapper.find('.checkbox-tap')
+    expect(checkboxTap.exists()).toBe(true)
+
+    await checkboxTap.trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(api.updateItem).toHaveBeenCalledWith(1, { checked: true })
+    expect(document.querySelector('.sheet')).toBeNull()
+  })
+
+  it('opens the edit sheet when tapping outside the checkbox', async () => {
+    const { api } = await import('../composables/useApi.js')
+    api.getItems.mockResolvedValue([
+      { id: 1, name: 'にんじん', checked: 0, category: '野菜・果物' }
+    ])
+
+    const wrapper = mount(ListView)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    const itemBody = wrapper.find('.item-body')
+    expect(itemBody.exists()).toBe(true)
+
+    await itemBody.trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    expect(document.querySelector('.sheet')).not.toBeNull()
+    expect(api.updateItem).not.toHaveBeenCalled()
   })
 })
