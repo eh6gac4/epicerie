@@ -92,6 +92,7 @@ export const api = {
   createList: (name) => request('POST', '/api/lists', { name }),
   joinList: (shareCode) => request('POST', '/api/lists/join', { shareCode }),
   getList: (id) => request('GET', `/api/lists/${id}`),
+  updateList: (id, name) => request('PATCH', `/api/lists/${id}`, { name }),
   deleteList: (id) => request('DELETE', `/api/lists/${id}`),
   getItems: (listId) => request('GET', `/api/lists/${listId}/items`),
   addItem: (listId, data) => request('POST', `/api/lists/${listId}/items`, typeof data === 'string' ? { name: data } : data),

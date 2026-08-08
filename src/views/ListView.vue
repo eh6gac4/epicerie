@@ -6,7 +6,7 @@
           <path d="M8 1L1 8L8 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
-      <span class="header-title">{{ list?.name ?? '…' }}</span>
+      <span class="header-title" @click="openRename">{{ list?.name ?? '…' }}</span>
       <div class="header-actions">
         <button class="keep-checked-btn" :class="{ 'is-active': keepCheckedMode }" @click="keepCheckedMode = !keepCheckedMode" aria-label="チェックしたものを消さない">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -182,6 +182,30 @@
         </button>
       </div>
     </footer>
+
+    <!-- Rename sheet -->
+    <Teleport to="body">
+      <Transition name="overlay">
+        <div v-if="showRename" class="overlay" @click.self="closeRename">
+          <div class="sheet">
+            <div class="sheet-handle" />
+
+            <div class="field-group">
+              <label class="field-label">リスト名</label>
+              <input
+                ref="renameInput"
+                v-model="renameName"
+                class="sheet-input"
+                maxlength="50"
+                @keydown.enter="saveRename"
+              />
+            </div>
+
+            <button class="sheet-btn" @click="saveRename">保存する</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Edit sheet -->
     <Teleport to="body">
@@ -370,7 +394,7 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../composables/useApi.js'
 import { getWebApp } from '../composables/useTelegram.js'
@@ -390,6 +414,9 @@ const toast = ref('')
 const inputFocused = ref(false)
 const editItem = ref(null)
 const editForm = reactive({ name: '', category: 'その他', quantity: '', note: '' })
+const showRename = ref(false)
+const renameName = ref('')
+const renameInput = ref(null)
 const showChecked = ref(false)
 const recategorizing = ref(false)
 const showShare = ref(false)
@@ -460,6 +487,40 @@ const filteredSuggestions = computed(() => {
 })
 
 const showSuggestions = computed(() => inputFocused.value && !!newItem.value.trim() && filteredSuggestions.value.length > 0)
+
+// ── Rename sheet ─────────────────────────────────────────────
+function openRename() {
+  if (!list.value) return
+  renameName.value = list.value.name
+  showRename.value = true
+}
+
+function closeRename() { showRename.value = false }
+
+watch(showRename, async (open) => {
+  if (open) {
+    await nextTick()
+    renameInput.value?.focus()
+  }
+})
+
+async function saveRename() {
+  const next = renameName.value.trim()
+  if (!next || next === list.value.name) {
+    closeRename()
+    return
+  }
+  const prev = list.value.name
+  list.value.name = next
+  closeRename()
+  try {
+    await api.updateList(listId, next)
+    getWebApp()?.HapticFeedback?.notificationOccurred('success')
+  } catch (e) {
+    list.value.name = prev
+    showToast(e.message)
+  }
+}
 
 // ── Edit sheet ───────────────────────────────────────────────
 async function openEdit(item) {
@@ -939,6 +1000,11 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.header-title:active {
+  opacity: 0.6;
 }
 
 .share-btn {

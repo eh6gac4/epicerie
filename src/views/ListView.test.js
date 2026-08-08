@@ -11,6 +11,8 @@ vi.mock('vue-router', () => ({
 // Mock API
 vi.mock('../composables/useApi.js', () => ({
   api: {
+    getList: vi.fn().mockImplementation(() => Promise.resolve({ id: 'test-list', name: 'テストリスト', share_code: 'ABC' })),
+    updateList: vi.fn().mockResolvedValue({ ok: true, name: 'テストリスト' }),
     getItems: vi.fn().mockResolvedValue([]),
     addItem: vi.fn().mockResolvedValue({ id: '1', name: 'にんじん', category: '野菜' }),
     updateItem: vi.fn().mockResolvedValue({ ok: true }),
@@ -145,5 +147,87 @@ describe('ListView.vue - Item row tap', () => {
 
     expect(document.querySelector('.sheet')).not.toBeNull()
     expect(api.updateItem).not.toHaveBeenCalled()
+  })
+})
+
+describe('ListView.vue - List rename', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // Previous tests may leave teleported sheets mounted in document.body.
+    document.body.querySelectorAll('.overlay').forEach(el => el.remove())
+  })
+
+  it('shows the fetched list name in the header', async () => {
+    const wrapper = mount(ListView)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.header-title').text()).toBe('テストリスト')
+  })
+
+  it('opens the rename sheet with the current name when tapping the header title', async () => {
+    const wrapper = mount(ListView)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.header-title').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const sheetInput = document.querySelector('.sheet .sheet-input')
+    expect(sheetInput).not.toBeNull()
+    expect(sheetInput.value).toBe('テストリスト')
+
+    wrapper.unmount()
+  })
+
+  it('saves the new name optimistically and calls api.updateList', async () => {
+    const { api } = await import('../composables/useApi.js')
+
+    const wrapper = mount(ListView)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.header-title').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const sheetInput = document.querySelector('.sheet .sheet-input')
+    sheetInput.value = '新しい名前'
+    sheetInput.dispatchEvent(new Event('input'))
+    await wrapper.vm.$nextTick()
+
+    document.querySelector('.sheet .sheet-btn').click()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.header-title').text()).toBe('新しい名前')
+    expect(api.updateList).toHaveBeenCalledWith('test-list', '新しい名前')
+
+    await new Promise(resolve => setTimeout(resolve, 10))
+    wrapper.unmount()
+  })
+
+  it('rolls back the name if the save fails', async () => {
+    const { api } = await import('../composables/useApi.js')
+    api.updateList.mockRejectedValue(new Error('保存に失敗しました'))
+
+    const wrapper = mount(ListView)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.header-title').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const sheetInput = document.querySelector('.sheet .sheet-input')
+    sheetInput.value = '新しい名前'
+    sheetInput.dispatchEvent(new Event('input'))
+    await wrapper.vm.$nextTick()
+
+    document.querySelector('.sheet .sheet-btn').click()
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.header-title').text()).toBe('テストリスト')
+
+    wrapper.unmount()
   })
 })
