@@ -28,6 +28,13 @@
             <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
         </button>
+        <button class="menu-btn" @click="showMenu = true" :disabled="!list" aria-label="メニュー">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="5" r="1.5"/>
+            <circle cx="12" cy="12" r="1.5"/>
+            <circle cx="12" cy="19" r="1.5"/>
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -202,6 +209,30 @@
             </div>
 
             <button class="sheet-btn" @click="saveRename">保存する</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- List menu sheet -->
+    <Teleport to="body">
+      <Transition name="overlay">
+        <div v-if="showMenu" class="overlay" @click.self="showMenu = false">
+          <div class="sheet">
+            <div class="sheet-handle" />
+
+            <button class="sheet-btn" @click="showMenu = false; openRename()">名前を変更</button>
+            <button class="sheet-btn" @click="archiveCurrentList">アーカイブする</button>
+            <button
+              v-if="isOwner"
+              class="sheet-btn sheet-btn--danger"
+              @click="deleteCurrentList"
+            >削除する</button>
+            <button
+              v-else
+              class="sheet-btn sheet-btn--danger"
+              @click="leaveCurrentList"
+            >リストから抜ける</button>
           </div>
         </div>
       </Transition>
@@ -397,12 +428,15 @@
 import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../composables/useApi.js'
-import { getWebApp } from '../composables/useTelegram.js'
+import { getWebApp, getMyUserId } from '../composables/useTelegram.js'
+import { useListActions } from '../composables/useListActions.js'
 import { CATEGORIES, SUGGESTIONS } from '../data/suggestions.js'
 
 const route = useRoute()
 const router = useRouter()
 const listId = route.params.id
+const listActions = useListActions()
+const myUserId = getMyUserId()
 
 const list = ref(null)
 const items = ref([])
@@ -417,6 +451,8 @@ const editForm = reactive({ name: '', category: 'その他', quantity: '', note:
 const showRename = ref(false)
 const renameName = ref('')
 const renameInput = ref(null)
+const showMenu = ref(false)
+const isOwner = computed(() => list.value && myUserId != null && list.value.created_by === myUserId)
 const showChecked = ref(false)
 const recategorizing = ref(false)
 const showShare = ref(false)
@@ -518,6 +554,34 @@ async function saveRename() {
     getWebApp()?.HapticFeedback?.notificationOccurred('success')
   } catch (e) {
     list.value.name = prev
+    showToast(e.message)
+  }
+}
+
+// ── List menu ────────────────────────────────────────────────
+async function archiveCurrentList() {
+  showMenu.value = false
+  try {
+    if (await listActions.archive(listId)) router.push('/')
+  } catch (e) {
+    showToast(e.message)
+  }
+}
+
+async function deleteCurrentList() {
+  showMenu.value = false
+  try {
+    if (await listActions.delete(listId)) router.push('/')
+  } catch (e) {
+    showToast(e.message)
+  }
+}
+
+async function leaveCurrentList() {
+  showMenu.value = false
+  try {
+    if (await listActions.leave(listId)) router.push('/')
+  } catch (e) {
     showToast(e.message)
   }
 }
@@ -1019,6 +1083,19 @@ onUnmounted(() => {
 
 .share-btn:active { opacity: 0.55; }
 .share-btn:disabled { opacity: 0.28; }
+
+.menu-btn {
+  padding: 9px;
+  color: var(--tg-hint);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-radius: 8px;
+  transition: opacity 0.14s;
+}
+
+.menu-btn:active { opacity: 0.55; }
+.menu-btn:disabled { opacity: 0.28; }
 
 /* ── Main ── */
 .main {

@@ -13,6 +13,10 @@ vi.mock('../composables/useApi.js', () => ({
   api: {
     getList: vi.fn().mockImplementation(() => Promise.resolve({ id: 'test-list', name: 'テストリスト', share_code: 'ABC' })),
     updateList: vi.fn().mockResolvedValue({ ok: true, name: 'テストリスト' }),
+    deleteList: vi.fn().mockResolvedValue({ ok: true }),
+    archiveList: vi.fn().mockResolvedValue({ ok: true }),
+    unarchiveList: vi.fn().mockResolvedValue({ ok: true }),
+    leaveList: vi.fn().mockResolvedValue({ ok: true }),
     getItems: vi.fn().mockResolvedValue([]),
     addItem: vi.fn().mockResolvedValue({ id: '1', name: 'にんじん', category: '野菜' }),
     updateItem: vi.fn().mockResolvedValue({ ok: true }),
@@ -28,13 +32,16 @@ vi.mock('../composables/useApi.js', () => ({
 // Mock Telegram
 vi.mock('../composables/useTelegram.js', () => ({
   getWebApp: () => ({
+    initDataUnsafe: { user: { id: 999999 } },
     HapticFeedback: {
       impactOccurred: vi.fn(),
       selectionChanged: vi.fn(),
       notificationOccurred: vi.fn()
     },
     MainButton: { show: vi.fn(), hide: vi.fn(), onClick: vi.fn(), offClick: vi.fn(), showProgress: vi.fn(), hideProgress: vi.fn() }
-  })
+  }),
+  getMyUserId: () => 999999,
+  confirmAsync: vi.fn().mockResolvedValue(true)
 }))
 
 describe('ListView.vue - Suggest Panel', () => {
@@ -227,6 +234,35 @@ describe('ListView.vue - List rename', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.header-title').text()).toBe('テストリスト')
+
+    wrapper.unmount()
+  })
+})
+
+describe('ListView.vue - List menu', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    document.body.querySelectorAll('.overlay').forEach(el => el.remove())
+  })
+
+  it('archives the list from the ⋯ menu', async () => {
+    const { api } = await import('../composables/useApi.js')
+
+    const wrapper = mount(ListView)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.menu-btn').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const archiveBtn = Array.from(document.querySelectorAll('.sheet .sheet-btn'))
+      .find(btn => btn.textContent === 'アーカイブする')
+    expect(archiveBtn).toBeTruthy()
+
+    archiveBtn.click()
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(api.archiveList).toHaveBeenCalledWith('test-list')
 
     wrapper.unmount()
   })

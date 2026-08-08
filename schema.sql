@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS list_members (
   list_id TEXT NOT NULL,
   tg_user_id INTEGER NOT NULL,
   joined_at INTEGER NOT NULL,
+  archived_at INTEGER,
   PRIMARY KEY (list_id, tg_user_id),
   FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE
 );

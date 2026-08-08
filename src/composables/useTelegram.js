@@ -53,6 +53,21 @@ export function getWebApp() {
   return window.Telegram?.WebApp ?? null
 }
 
+export function getMyUserId() {
+  return getWebApp()?.initDataUnsafe?.user?.id ?? null
+}
+
+export function confirmAsync(msg) {
+  return new Promise((resolve) => {
+    const tg = getWebApp()
+    if (tg?.showConfirm) {
+      tg.showConfirm(msg, (ok) => resolve(!!ok))
+    } else {
+      resolve(window.confirm(msg))
+    }
+  })
+}
+
 export function applyTheme() {
   const tg = getWebApp()
   if (!tg) return

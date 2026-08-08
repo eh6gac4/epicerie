@@ -37,11 +37,11 @@ app.use('*', async (c, next) => {
   return next()
 })
 
-// GET /api/lists
+// GET /api/lists — アクティブ・アーカイブ済み両方を含めて返す（lm.archived_at で判別）
 app.get('/lists', async (c) => {
   const userId = c.get('userId')
   const { results } = await c.env.DB.prepare(`
-    SELECT l.id, l.name, l.share_code, l.created_by,
+    SELECT l.id, l.name, l.share_code, l.created_by, lm.archived_at,
            COUNT(i.id) AS item_count,
            SUM(CASE WHEN i.checked = 1 THEN 1 ELSE 0 END) AS checked_count
     FROM lists l
@@ -49,9 +49,53 @@ app.get('/lists', async (c) => {
     LEFT JOIN items i ON l.id = i.list_id
     WHERE lm.tg_user_id = ?
     GROUP BY l.id
-    ORDER BY l.created_at DESC
+    ORDER BY lm.archived_at IS NOT NULL ASC, l.created_at DESC
   `).bind(userId).all()
   return c.json(results)
+})
+
+// POST /api/lists/:id/archive
+app.post('/lists/:id/archive', async (c) => {
+  const userId = c.get('userId')
+  const listId = c.req.param('id')
+  if (!await hasAccess(c.env.DB, listId, userId)) return c.json({ error: 'Not found' }, 404)
+
+  await c.env.DB.prepare('UPDATE list_members SET archived_at = ? WHERE list_id = ? AND tg_user_id = ?')
+    .bind(Date.now(), listId, userId).run()
+
+  logUserAction(c, 'ARCHIVE_LIST', listId)
+  return c.json({ ok: true })
+})
+
+// POST /api/lists/:id/unarchive
+app.post('/lists/:id/unarchive', async (c) => {
+  const userId = c.get('userId')
+  const listId = c.req.param('id')
+  if (!await hasAccess(c.env.DB, listId, userId)) return c.json({ error: 'Not found' }, 404)
+
+  await c.env.DB.prepare('UPDATE list_members SET archived_at = NULL WHERE list_id = ? AND tg_user_id = ?')
+    .bind(listId, userId).run()
+
+  logUserAction(c, 'UNARCHIVE_LIST', listId)
+  return c.json({ ok: true })
+})
+
+// DELETE /api/lists/:id/members/me — 自分がリストから抜ける（作成者は不可）
+app.delete('/lists/:id/members/me', async (c) => {
+  const userId = c.get('userId')
+  const listId = c.req.param('id')
+  if (!await hasAccess(c.env.DB, listId, userId)) return c.json({ error: 'Not found' }, 404)
+
+  const list = await c.env.DB.prepare('SELECT created_by FROM lists WHERE id = ?').bind(listId).first()
+  if (list?.created_by === userId) {
+    return c.json({ error: '作成者は退出できません（削除してください）' }, 403)
+  }
+
+  await c.env.DB.prepare('DELETE FROM list_members WHERE list_id = ? AND tg_user_id = ?')
+    .bind(listId, userId).run()
+
+  logUserAction(c, 'LEAVE_LIST', listId)
+  return c.json({ ok: true })
 })
 
 // POST /api/lists
@@ -129,8 +173,18 @@ app.delete('/lists/:id', async (c) => {
   const listId = c.req.param('id')
   const list = await c.env.DB.prepare('SELECT created_by FROM lists WHERE id = ?').bind(listId).first()
   if (!list || list.created_by !== userId) return c.json({ error: 'Forbidden' }, 403)
-  await c.env.DB.prepare('DELETE FROM lists WHERE id = ?').bind(listId).run()
-  
+
+  // items/list_members は FK CASCADE で自動削除されるが、R2 上の添付ファイル実体は消えないので
+  // 先にキーを集めておき、DB 削除と並行して消す
+  const { results: attachments } = await c.env.DB.prepare(
+    'SELECT a.file_key FROM item_attachments a JOIN items i ON a.item_id = i.id WHERE i.list_id = ?'
+  ).bind(listId).all()
+
+  await Promise.all([
+    attachments.length > 0 ? c.env.BUCKET.delete(attachments.map((a) => a.file_key)) : null,
+    c.env.DB.prepare('DELETE FROM lists WHERE id = ?').bind(listId).run(),
+  ])
+
   logUserAction(c, 'DELETE_LIST', listId)
   return c.json({ ok: true })
 })
