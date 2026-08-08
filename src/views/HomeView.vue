@@ -33,34 +33,37 @@
       </div>
 
       <div v-else class="cards">
-        <div
+        <ListCard
           v-for="(list, i) in lists"
           :key="list.id"
-          class="card"
-          :style="`--i: ${i}`"
-          @click="$router.push(`/list/${list.id}`)"
-        >
-          <div class="card-body">
-            <div class="card-name">{{ list.name }}</div>
-            <div class="card-foot">
-              <span v-if="list.item_count === 0" class="foot-hint">空のリスト</span>
-              <template v-else>
-                <span class="foot-frac">
-                  <span class="frac-done">{{ list.checked_count }}</span>
-                  <span class="frac-slash"> / </span>
-                  <span class="frac-total">{{ list.item_count }}</span>
-                </span>
-                <span class="foot-hint">完了</span>
-                <span v-if="list.checked_count === list.item_count" class="foot-badge">✓</span>
-              </template>
-            </div>
-          </div>
-          <div v-if="list.item_count > 0" class="card-bar">
-            <div
-              class="card-bar-fill"
-              :style="`width: ${Math.round(list.checked_count / list.item_count * 100)}%`"
-            />
-          </div>
+          :list="list"
+          :index="i"
+          @open="goToList"
+          @menu="openListMenu"
+        />
+      </div>
+
+      <div v-if="archivedLists.length > 0" class="archived-section">
+        <button class="archived-toggle" @click="showArchived = !showArchived">
+          <span>アーカイブ済み ({{ archivedLists.length }})</span>
+          <svg
+            class="archived-chevron"
+            :class="{ 'archived-chevron--open': showArchived }"
+            width="12" height="12" viewBox="0 0 12 12" fill="none"
+          >
+            <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+
+        <div v-if="showArchived" class="cards archived-cards">
+          <ListCard
+            v-for="list in archivedLists"
+            :key="list.id"
+            :list="list"
+            archived
+            @open="goToList"
+            @menu="openListMenu"
+          />
         </div>
       </div>
     </main>
@@ -130,6 +133,30 @@
       </Transition>
     </Teleport>
 
+    <!-- List action sheet -->
+    <Teleport to="body">
+      <Transition name="overlay">
+        <div v-if="menuList" class="overlay" @click.self="menuList = null">
+          <div class="sheet">
+            <div class="sheet-handle" />
+
+            <button v-if="isArchived(menuList)" class="sheet-btn" @click="unarchiveSelected">アーカイブを解除</button>
+            <button v-else class="sheet-btn" @click="archiveSelected">アーカイブする</button>
+            <button
+              v-if="isOwner(menuList)"
+              class="sheet-btn sheet-btn--danger"
+              @click="deleteSelected"
+            >削除する</button>
+            <button
+              v-else
+              class="sheet-btn sheet-btn--danger"
+              @click="leaveSelected"
+            >リストから抜ける</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Toast -->
     <Teleport to="body">
       <Transition name="toast">
@@ -140,13 +167,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../composables/useApi.js'
-import { getWebApp } from '../composables/useTelegram.js'
+import { getWebApp, getMyUserId } from '../composables/useTelegram.js'
+import { useListActions } from '../composables/useListActions.js'
+import ListCard from '../components/ListCard.vue'
 
 const router = useRouter()
-const lists = ref([])
+const listActions = useListActions()
+const myUserId = getMyUserId()
+const allLists = ref([])
+const lists = computed(() => allLists.value.filter(l => !l.archived_at))
+const archivedLists = computed(() => allLists.value.filter(l => !!l.archived_at))
+const showArchived = ref(false)
 const loading = ref(true)
 const error = ref(null)
 const showCreate = ref(false)
@@ -158,12 +192,73 @@ const joining = ref(false)
 const toast = ref('')
 const nameInput = ref(null)
 const codeInput = ref(null)
+const menuList = ref(null)
+
+function goToList(list) {
+  router.push(`/list/${list.id}`)
+}
+
+function openListMenu(list) {
+  menuList.value = list
+}
+
+function isOwner(list) {
+  return list && myUserId != null && list.created_by === myUserId
+}
+
+function isArchived(list) {
+  return !!list?.archived_at
+}
+
+async function archiveSelected() {
+  const list = menuList.value
+  menuList.value = null
+  if (!list) return
+  try {
+    if (await listActions.archive(list.id)) await load()
+  } catch (e) {
+    showToast(e.message)
+  }
+}
+
+async function unarchiveSelected() {
+  const list = menuList.value
+  menuList.value = null
+  if (!list) return
+  try {
+    if (await listActions.unarchive(list.id)) await load()
+  } catch (e) {
+    showToast(e.message)
+  }
+}
+
+async function deleteSelected() {
+  const list = menuList.value
+  menuList.value = null
+  if (!list) return
+  try {
+    if (await listActions.delete(list.id)) await load()
+  } catch (e) {
+    showToast(e.message)
+  }
+}
+
+async function leaveSelected() {
+  const list = menuList.value
+  menuList.value = null
+  if (!list) return
+  try {
+    if (await listActions.leave(list.id)) await load()
+  } catch (e) {
+    showToast(e.message)
+  }
+}
 
 async function load() {
   loading.value = true
   error.value = null
   try {
-    lists.value = await api.getLists()
+    allLists.value = await api.getLists()
   } catch (e) {
     error.value = e.message
   } finally {
@@ -383,83 +478,33 @@ onMounted(async () => {
   gap: 10px;
 }
 
-.card {
-  background: var(--tg-secondary-bg);
-  border-radius: var(--radius);
-  cursor: pointer;
-  user-select: none;
-  overflow: hidden;
-  animation: rise 0.32s calc(var(--i, 0) * 60ms) cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  transition: transform 0.12s, opacity 0.12s;
+/* card 自体の見た目は ListCard.vue 側で定義 */
+
+/* ── Archived section ── */
+.archived-section {
+  margin-top: 18px;
 }
 
-.card:active {
-  transform: scale(0.975);
-  opacity: 0.88;
-}
-
-@keyframes rise {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.card-body {
-  padding: 16px 18px 14px;
-}
-
-.card-name {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-  margin-bottom: 6px;
-}
-
-.card-foot {
+.archived-toggle {
   display: flex;
   align-items: center;
-  gap: 5px;
-}
-
-.foot-frac {
-  font-size: 13px;
-}
-
-.frac-done {
-  font-weight: 500;
-}
-
-.frac-slash {
-  color: var(--tg-hint);
-  opacity: 0.5;
-}
-
-.frac-total {
-  color: var(--tg-hint);
-}
-
-.foot-hint {
+  gap: 6px;
+  padding: 8px 4px;
   font-size: 13px;
   color: var(--tg-hint);
+  width: 100%;
 }
 
-.foot-badge {
-  font-size: 12px;
-  color: var(--tg-button);
-  font-weight: 600;
-  margin-left: 2px;
+.archived-chevron {
+  transition: transform 0.2s;
 }
 
-.card-bar {
-  height: 3px;
-  background: color-mix(in srgb, var(--tg-hint) 14%, transparent);
+.archived-chevron--open {
+  transform: rotate(180deg);
 }
 
-.card-bar-fill {
-  height: 100%;
-  background: var(--tg-button);
-  transition: width 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
-  border-radius: 0 2px 2px 0;
+.archived-cards {
+  margin-top: 8px;
 }
 
 /* ── Overlay + Sheet ── */
@@ -571,6 +616,12 @@ onMounted(async () => {
 
 .sheet-btn--muted {
   opacity: 0.38;
+}
+
+.sheet-btn--danger {
+  background: color-mix(in srgb, #e05050 12%, transparent);
+  color: #e05050;
+  margin-top: 8px;
 }
 
 .sheet-btn:not(.sheet-btn--muted):active {
