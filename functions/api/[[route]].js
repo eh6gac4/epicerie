@@ -107,6 +107,22 @@ app.get('/lists/:id', async (c) => {
   return c.json(list)
 })
 
+// PATCH /api/lists/:id
+app.patch('/lists/:id', async (c) => {
+  const userId = c.get('userId')
+  const listId = c.req.param('id')
+  if (!await hasAccess(c.env.DB, listId, userId)) return c.json({ error: 'Not found' }, 404)
+
+  const { name } = await c.req.json()
+  const trimmed = name?.trim()
+  if (!trimmed) return c.json({ error: 'Name required' }, 400)
+
+  await c.env.DB.prepare('UPDATE lists SET name = ? WHERE id = ?').bind(trimmed, listId).run()
+
+  logUserAction(c, 'UPDATE_LIST', listId, null, { name: trimmed })
+  return c.json({ ok: true, name: trimmed })
+})
+
 // DELETE /api/lists/:id
 app.delete('/lists/:id', async (c) => {
   const userId = c.get('userId')
