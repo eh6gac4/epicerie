@@ -239,6 +239,75 @@ describe('ListView.vue - List rename', () => {
   })
 })
 
+describe('ListView.vue - Edit sheet quantity controls', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    document.body.querySelectorAll('.overlay').forEach(el => el.remove())
+  })
+
+  it('increments and decrements the quantity input via ± buttons', async () => {
+    const { api } = await import('../composables/useApi.js')
+    api.getItems.mockResolvedValue([
+      { id: 1, name: 'にんじん', checked: 0, category: '野菜・果物', quantity: '2' }
+    ])
+
+    const wrapper = mount(ListView)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.item-body').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const qtyInput = document.querySelector('.qty-ctrl-sheet .qty-input')
+    const [minusBtn, plusBtn] = document.querySelectorAll('.qty-ctrl-sheet .qty-btn')
+    expect(qtyInput.value).toBe('2')
+
+    plusBtn.click()
+    await wrapper.vm.$nextTick()
+    expect(qtyInput.value).toBe('3')
+
+    minusBtn.click()
+    await wrapper.vm.$nextTick()
+    minusBtn.click()
+    await wrapper.vm.$nextTick()
+    expect(qtyInput.value).toBe('1')
+
+    // does not go below 1
+    minusBtn.click()
+    await wrapper.vm.$nextTick()
+    expect(qtyInput.value).toBe('1')
+
+    wrapper.unmount()
+  })
+
+  it('saves the updated quantity when tapping 保存する', async () => {
+    const { api } = await import('../composables/useApi.js')
+    api.getItems.mockResolvedValue([
+      { id: 1, name: 'にんじん', checked: 0, category: '野菜・果物', quantity: '2' }
+    ])
+
+    const wrapper = mount(ListView)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.item-body').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const plusBtn = document.querySelectorAll('.qty-ctrl-sheet .qty-btn')[1]
+    plusBtn.click()
+    await wrapper.vm.$nextTick()
+
+    const saveBtn = Array.from(document.querySelectorAll('.sheet .sheet-btn'))
+      .find(btn => btn.textContent === '保存する')
+    saveBtn.click()
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(api.updateItem).toHaveBeenCalledWith(1, expect.objectContaining({ quantity: '3' }))
+
+    wrapper.unmount()
+  })
+})
+
 describe('ListView.vue - List menu', () => {
   beforeEach(() => {
     vi.clearAllMocks()

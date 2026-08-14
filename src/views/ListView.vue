@@ -265,12 +265,16 @@
 
             <div class="field-group">
               <label class="field-label">数量</label>
-              <input
-                v-model="editForm.quantity"
-                class="sheet-input"
-                placeholder="なし"
-                maxlength="10"
-              />
+              <div class="qty-ctrl-sheet">
+                <button class="qty-btn" @click="decrementEditQty">−</button>
+                <input
+                  v-model="editForm.quantity"
+                  class="sheet-input qty-input"
+                  placeholder="なし"
+                  maxlength="10"
+                />
+                <button class="qty-btn" @click="incrementEditQty">＋</button>
+              </div>
             </div>
 
             <div class="field-group">
@@ -832,8 +836,16 @@ function isNumericQty(item) {
   return item.quantity !== null && item.quantity !== '' && !isNaN(Number(item.quantity))
 }
 
+// Returns the bumped quantity string, or null if delta would take it below 1.
+function bumpQty(quantity, delta) {
+  const current = Number(quantity)
+  const base = isNaN(current) ? 0 : current
+  if (delta < 0 && base <= 1) return null
+  return String(base + delta)
+}
+
 async function incrementQty(item) {
-  const newQty = String(Number(item.quantity) + 1)
+  const newQty = bumpQty(item.quantity, 1)
   const prev = item.quantity
   item.quantity = newQty
   getWebApp()?.HapticFeedback?.impactOccurred('light')
@@ -846,9 +858,8 @@ async function incrementQty(item) {
 }
 
 async function decrementQty(item) {
-  const current = Number(item.quantity)
-  if (current <= 1) return
-  const newQty = String(current - 1)
+  const newQty = bumpQty(item.quantity, -1)
+  if (newQty === null) return
   const prev = item.quantity
   item.quantity = newQty
   getWebApp()?.HapticFeedback?.impactOccurred('light')
@@ -858,6 +869,18 @@ async function decrementQty(item) {
     item.quantity = prev
     showToast(e.message)
   }
+}
+
+function incrementEditQty() {
+  editForm.quantity = bumpQty(editForm.quantity, 1)
+  getWebApp()?.HapticFeedback?.impactOccurred('light')
+}
+
+function decrementEditQty() {
+  const newQty = bumpQty(editForm.quantity, -1)
+  if (newQty === null) return
+  editForm.quantity = newQty
+  getWebApp()?.HapticFeedback?.impactOccurred('light')
 }
 
 // ── Toggle / Delete ──────────────────────────────────────────
@@ -1650,6 +1673,23 @@ onUnmounted(() => {
   font-size: 16px;
   color: var(--tg-text);
   outline: none;
+}
+
+.qty-ctrl-sheet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qty-ctrl-sheet .qty-input {
+  flex: 1;
+  text-align: center;
+}
+
+.qty-ctrl-sheet .qty-btn {
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
 }
 
 .sheet-textarea {
