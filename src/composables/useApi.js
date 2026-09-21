@@ -44,9 +44,29 @@ async function createSession() {
   return session
 }
 
+// --- 更新系リクエストの追跡 ---
+// 楽観的更新（チェック・数量変更・追加・削除）は呼び出し元で await されないため、
+// 直後にリスト一覧へ戻ると PATCH/POST の完了前に GET /api/lists が走り、古い集計が表示される。
+// 進行中の更新系リクエストを覚えておき、一覧の再読み込み前に待てるようにする。
+const pendingWrites = new Set()
+
+function trackWrite(promise) {
+  const tracked = promise.catch(() => {}).finally(() => { pendingWrites.delete(tracked) })
+  pendingWrites.add(tracked)
+  return promise
+}
+
+// 進行中の更新系リクエストが全て終わるまで待つ。
+// 待っている間に新しい更新が始まることもあるので空になるまで繰り返す（暴走防止に上限あり）。
+export async function settlePendingWrites(maxRounds = 5) {
+  for (let i = 0; i < maxRounds && pendingWrites.size > 0; i++) {
+    await Promise.all([...pendingWrites])
+  }
+}
+
 // --- HTTP requests ---
 
-async function request(method, path, body, _retry = false) {
+async function rawRequest(method, path, body, _retry = false) {
   const tg = getWebApp()
   const session = getStoredSession()
   const headers = {
@@ -59,6 +79,7 @@ async function request(method, path, body, _retry = false) {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
   })
 
   // On 401 with an (expired/invalid) session token, renew once and retry
@@ -67,7 +88,7 @@ async function request(method, path, body, _retry = false) {
     if (tg?.initData) {
       try {
         await createSession()
-        return request(method, path, body, true)
+        return rawRequest(method, path, body, true)
       } catch { /* fall through to error below */ }
     }
   }
@@ -84,6 +105,12 @@ async function request(method, path, body, _retry = false) {
   }
   if (res.status === 204) return undefined
   return res.json()
+}
+
+// GET 以外は「進行中の更新」として追跡する
+function request(method, path, body) {
+  const promise = rawRequest(method, path, body)
+  return method === 'GET' ? promise : trackWrite(promise)
 }
 
 export const api = {
@@ -107,16 +134,18 @@ export const api = {
   async getItemAttachments(itemId) {
     return request('GET', `/api/items/${itemId}/attachments`)
   },
-  async uploadItemAttachment(itemId, file) {
-    const tg = getWebApp()
-    const session = getStoredSession()
-    const headers = { 'X-Telegram-Init-Data': tg?.initData ?? '' }
-    if (session) headers['X-Session-Token'] = session.token
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await fetch(`/api/items/${itemId}/attachments`, { method: 'POST', headers, body: formData })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return res.json()
+  uploadItemAttachment(itemId, file) {
+    return trackWrite((async () => {
+      const tg = getWebApp()
+      const session = getStoredSession()
+      const headers = { 'X-Telegram-Init-Data': tg?.initData ?? '' }
+      if (session) headers['X-Session-Token'] = session.token
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`/api/items/${itemId}/attachments`, { method: 'POST', headers, body: formData })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    })())
   },
   async deleteAttachment(attachmentId) {
     return request('DELETE', `/api/attachments/${attachmentId}`)
@@ -133,19 +162,21 @@ export const api = {
     return url.pathname + url.search + url.hash
   },
   recategorize: (listId) => request('POST', `/api/lists/${listId}/recategorize`),
-  uploadFile: async (listId, file) => {
-    const tg = getWebApp()
-    const session = getStoredSession()
-    const headers = { 'X-Telegram-Init-Data': tg?.initData ?? '' }
-    if (session) headers['X-Session-Token'] = session.token
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await fetch(`/api/lists/${listId}/upload`, { method: 'POST', headers, body: formData })
-    if (!res.ok) {
-      let msg = `HTTP ${res.status}`
-      try { const d = await res.json(); if (d?.error) msg += `: ${d.error}` } catch {}
-      throw new Error(msg)
-    }
-    return res.json()
+  uploadFile: (listId, file) => {
+    return trackWrite((async () => {
+      const tg = getWebApp()
+      const session = getStoredSession()
+      const headers = { 'X-Telegram-Init-Data': tg?.initData ?? '' }
+      if (session) headers['X-Session-Token'] = session.token
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`/api/lists/${listId}/upload`, { method: 'POST', headers, body: formData })
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`
+        try { const d = await res.json(); if (d?.error) msg += `: ${d.error}` } catch {}
+        throw new Error(msg)
+      }
+      return res.json()
+    })())
   },
 }

@@ -167,9 +167,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from '../composables/useApi.js'
+import { api, settlePendingWrites } from '../composables/useApi.js'
 import { getWebApp, getMyUserId } from '../composables/useTelegram.js'
 import { useListActions } from '../composables/useListActions.js'
 import ListCard from '../components/ListCard.vue'
@@ -254,10 +254,15 @@ async function leaveSelected() {
   }
 }
 
-async function load() {
-  loading.value = true
+// リスト詳細での更新（チェック・数量・追加・削除）は楽観的更新で、
+// 画面を戻った時点ではまだサーバーに反映されていないことがある。
+// 進行中の更新が終わってから取得しないと古い集計が表示されるので必ず待つ。
+// silent: 再取得中にスピナーへ戻さない（フォアグラウンド復帰時の更新用）
+async function load({ silent = false } = {}) {
+  if (!silent) loading.value = true
   error.value = null
   try {
+    await settlePendingWrites()
     allLists.value = await api.getLists()
   } catch (e) {
     error.value = e.message
@@ -348,9 +353,20 @@ watch(sheetMode, (mode) => {
   }
 })
 
+// Telegram ミニアプリはバックグラウンドに回っても画面が保持されるため、
+// 復帰時に取得し直さないと他メンバーの変更が反映されないままになる。
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') load({ silent: true })
+}
+
 onMounted(async () => {
   await handleStartParam()
   await load()
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
 
