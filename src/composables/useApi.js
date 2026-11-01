@@ -1,8 +1,10 @@
-async function request(method, path, body) {
+import { getWebApp } from './useTelegram.js'
+
+async function request(method, path, body, extraHeaders = {}) {
   const res = await fetch(path, {
     method,
     credentials: 'same-origin',
-    headers: body instanceof FormData ? {} : { 'Content-Type': 'application/json' },
+    headers: { ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...extraHeaders },
     body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) {
@@ -18,7 +20,22 @@ async function request(method, path, body) {
 
 export const api = {
   getMe: () => request('GET', '/api/auth/me'),
-  logout: () => request('POST', '/api/auth/logout'),
+  async loginTelegram() {
+    let token
+    try { token = JSON.parse(localStorage.getItem('gl_session'))?.token } catch {}
+    const initData = getWebApp()?.initData
+    if (!initData && !token) return
+    const user = await request('POST', '/api/auth/telegram', undefined, {
+      ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
+      ...(token ? { 'X-Session-Token': token } : {}),
+    })
+    try { localStorage.removeItem('gl_session') } catch {}
+    return user
+  },
+  async logout() {
+    await request('POST', '/api/auth/logout')
+    try { localStorage.removeItem('gl_session') } catch {}
+  },
   getLists: () => request('GET', '/api/lists'),
   createList: (name) => request('POST', '/api/lists', { name }),
   joinList: (shareCode) => request('POST', '/api/lists/join', { shareCode }),

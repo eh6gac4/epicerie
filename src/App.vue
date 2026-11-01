@@ -36,11 +36,12 @@ async function logout() {
   try { await api.logout(); clearUser() }
   catch { error.value = 'ログアウトできませんでした。もう一度お試しください。' }
 }
-onMounted(() => {
+onMounted(async () => {
   getWebApp()?.ready()
   getWebApp()?.expand()
   applyTheme()
   window.addEventListener('auth-required', clearUser)
+  try { await api.loginTelegram() } catch {}
   loadUser()
 })
 onUnmounted(() => window.removeEventListener('auth-required', clearUser))

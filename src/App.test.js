@@ -4,7 +4,7 @@ import App from './App.vue'
 import { api } from './composables/useApi.js'
 import { getMyUserId } from './composables/useTelegram.js'
 
-vi.mock('./composables/useApi.js', () => ({ api: { getMe: vi.fn(), logout: vi.fn() } }))
+vi.mock('./composables/useApi.js', () => ({ api: { getMe: vi.fn(), logout: vi.fn(), loginTelegram: vi.fn() } }))
 let wrapper
 beforeEach(() => vi.clearAllMocks())
 afterEach(() => wrapper?.unmount())

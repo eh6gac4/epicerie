@@ -1,6 +1,6 @@
 # épicerie
 
-Googleログインで利用する買い物リスト。Telegramからの起動は不要。
+GoogleログインとTelegram Mini App認証の両方で利用する買い物リスト。通常のブラウザからはGoogle、Telegramからは従来のユーザーIDで利用できる。
 
 ## Googleログインの設定
 
@@ -14,13 +14,25 @@ Googleログインで利用する買い物リスト。Telegramからの起動は
 | APP_ORIGIN | 公開URLのオリジン（例 `https://grocery-list.pages.dev`） |
 | GOOGLE_CLIENT_ID | GoogleのOAuthクライアントID |
 | GOOGLE_CLIENT_SECRET | GoogleのOAuthクライアントシークレット |
+| TELEGRAM_BOT_TOKEN | 既存のTelegram Mini App認証用ボットトークン（継続して設定） |
 | SESSION_SECRET | `openssl rand -hex 32` などで生成する32文字以上の秘密値 |
 | GEMINI_API_KEY | 既存の画像・カテゴリ分類用キー |
 
 シークレットをブラウザ用の `VITE_` 変数に設定しない。
 Google OAuthの公開ステータスがテスト中の場合は、利用者をテストユーザーに追加する。
-`TELEGRAM_BOT_TOKEN`、`ALLOW_UNAUTH`、`VITE_BOT_USERNAME` は使用しない。
+`TELEGRAM_BOT_TOKEN` は引き続き使用する。`ALLOW_UNAUTH` による認証回避は使用しない。共有リンクは通常のWeb URLを使用する。
 Googleの埋め込みブラウザ制限があるため、通常のブラウザからログインする。
+
+## Telegram認証の継続
+
+既存の `TELEGRAM_BOT_TOKEN` を保持する。Telegram単独の利用にはGoogleの設定や新しいテーブルを必要としない。
+Telegram起動時は署名付きの起動データをサーバーで確認し、従来と同じユーザーIDのHttpOnly Cookieを発行する。
+起動データは24時間以内のものを受け付ける。発行済みのセッションは30日間有効。
+以前のローカルストレージのセッションも初回起動時にCookieへ交換する。
+旧クライアント用の `/api/auth/session` と認証ヘッダー・添付用クエリも引き続き受け付ける。
+ログアウト後、Telegram内でアプリを開き直すと再認証する。
+Googleと併用する際は `SESSION_SECRET` を設定する。未設定時はTelegram Cookieの署名にボットトークンを使用する。
+署名用の値を変更すると既存Cookieは無効になり、再ログインが必要になる。
 
 ## デプロイ
 
@@ -35,6 +47,7 @@ npx wrangler d1 execute grocery-list-db --remote --file=migrate_google_auth.sql
 
 ## 既存データの引き継ぎ
 
+Telegramからは従来どおり既存データを使える。Googleからも同じデータを使う場合のみ以下を行う。
 メールアドレスだけでは既存ユーザーと自動連携しない。
 各利用者がGoogleで一度ログインした後、管理者が本人を確認して対応付ける。
 
@@ -72,3 +85,5 @@ Googleログイン後のセッションはHttpOnly Cookieに30日間保存する
 
 - https://developers.google.com/identity/protocols/oauth2/web-server
 - https://developers.google.com/identity/openid-connect/openid-connect
+
+- https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app

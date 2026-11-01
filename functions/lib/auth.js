@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { signSession, verifySession, validateInitData } from './telegramAuth.js'
 import { getSignedCookie, setSignedCookie, deleteCookie } from 'hono/cookie'
 
 export const auth = new Hono()
@@ -9,31 +10,45 @@ const DURATION = 30 * 24 * 60 * 60
 function configured(c) {
   return c.env.SESSION_SECRET?.length >= 32 && c.env.APP_ORIGIN
 }
+function sessionSecret(c) { return c.env.SESSION_SECRET || c.env.TELEGRAM_BOT_TOKEN }
 function options(c, maxAge) {
-  return { httpOnly: true, secure: new URL(c.env.APP_ORIGIN).protocol === 'https:', sameSite: 'Lax', path: '/', maxAge }
+  return { httpOnly: true, secure: new URL(c.env.APP_ORIGIN || c.req.url).protocol === 'https:', sameSite: 'Lax', path: '/', maxAge }
 }
 function returnPath(value) {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') && !/[\\\r\n]/.test(value) ? value : '/'
 }
 async function readCookie(c, name) {
   try {
-    const value = await getSignedCookie(c, c.env.SESSION_SECRET, name)
+    const value = await getSignedCookie(c, sessionSecret(c), name)
     const data = value && JSON.parse(value)
     return data?.expiresAt > Date.now() ? data : null
   } catch { return null }
 }
+async function telegramUser(c) {
+  if (!c.env.TELEGRAM_BOT_TOKEN) return null
+  const token = c.req.header('X-Session-Token') || c.req.query('session_token')
+  const initData = c.req.header('X-Telegram-Init-Data') || c.req.query('init_data')
+  let result = token ? await verifySession(token, c.env.TELEGRAM_BOT_TOKEN) : null
+  if (!result?.valid && initData) result = await validateInitData(initData, c.env.TELEGRAM_BOT_TOKEN)
+  return result?.valid ? { id: result.userId, name: result.name || 'Telegram', provider: 'telegram' } : null
+}
 export async function requireUser(c, next) {
   c.header('Cache-Control', 'no-store')
-  if (!configured(c)) return c.json({ error: 'Authentication is not configured' }, 503)
   if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
+    const origin = new URL(c.env.APP_ORIGIN || c.req.url).origin
     if (c.req.header('Sec-Fetch-Site') === 'cross-site' ||
-        (c.req.header('Origin') && c.req.header('Origin') !== new URL(c.env.APP_ORIGIN).origin)) {
+        (c.req.header('Origin') && c.req.header('Origin') !== origin)) {
       return c.json({ error: 'Invalid origin' }, 403)
     }
   }
   const session = await readCookie(c, SESSION)
-  if (!Number.isSafeInteger(session?.userId)) return c.json({ error: 'Unauthorized' }, 401)
-  const user = await c.env.DB.prepare('SELECT id, email, name FROM app_users WHERE id = ?').bind(session.userId).first()
+  let user = null
+  if (Number.isSafeInteger(session?.userId)) {
+    user = session.provider === 'telegram' && session.userId > 0
+      ? { id: session.userId, name: session.name || 'Telegram', provider: 'telegram' }
+      : await c.env.DB.prepare('SELECT id, email, name FROM app_users WHERE id = ?').bind(session.userId).first()
+  }
+  user ||= await telegramUser(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   c.set('userId', user.id)
   c.set('user', user)
@@ -42,12 +57,25 @@ export async function requireUser(c, next) {
 
 auth.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
-  if (!configured(c)) return c.json({ error: 'Authentication is not configured' }, 503)
   return next()
 })
 
+// Exchange Telegram launch data or an existing legacy session for an HttpOnly cookie.
+auth.post('/telegram', requireUser, async (c) => {
+  const user = c.get('user')
+  if (user.provider !== 'telegram' || !sessionSecret(c)) return c.json({ error: 'Telegram authentication required' }, 401)
+  await setSignedCookie(c, SESSION, JSON.stringify({ userId: user.id, name: user.name, provider: 'telegram', expiresAt: Date.now() + DURATION * 1000 }), sessionSecret(c), options(c, DURATION))
+  return c.json(user)
+})
+
+// Keep the previous endpoint for already deployed Telegram clients.
+auth.post('/session', requireUser, async (c) => {
+  if (c.get('user').provider !== 'telegram' || !c.env.TELEGRAM_BOT_TOKEN) return c.json({ error: 'Telegram authentication required' }, 401)
+  return c.json(await signSession(c.get('userId'), c.env.TELEGRAM_BOT_TOKEN))
+})
+
 auth.get('/google', async (c) => {
-  if (!c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) return c.json({ error: 'Google login is not configured' }, 503)
+  if (!configured(c) || !c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) return c.json({ error: 'Google login is not configured' }, 503)
   const state = crypto.randomUUID()
   const verifier = crypto.randomUUID() + crypto.randomUUID()
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
@@ -64,6 +92,7 @@ auth.get('/google', async (c) => {
 })
 
 auth.get('/google/callback', async (c) => {
+  if (!configured(c) || !c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) return c.json({ error: 'Google login is not configured' }, 503)
   const flow = await readCookie(c, OAUTH)
   deleteCookie(c, OAUTH, options(c, 0))
   if (!flow || flow.state !== c.req.query('state') || !c.req.query('code') || c.req.query('error')) return c.redirect('/?auth_error=1')
