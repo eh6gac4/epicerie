@@ -13,5 +13,7 @@ binding = "BUCKET"
 bucket_name = "grocery-list-attachments"
 # Set AGENT_PASSWORD_PEPPER for agent ID/password login.
 # Keep TELEGRAM_BOT_TOKEN for Telegram Mini App authentication.
+# Set SHARED_DATA_MODE=true after explicitly enrolling shared Telegram users and copying data.
+# Set GOOGLE_ALLOWED_EMAILS to the exact approved Google email addresses.
 # Configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET and APP_ORIGIN
 # in Cloudflare Pages secrets / environment variables. See README.md.

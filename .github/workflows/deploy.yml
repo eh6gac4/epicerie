@@ -38,4 +38,5 @@ jobs:
           command: |
             d1 execute grocery-list-db --remote --file=migrate_google_auth.sql
             d1 execute grocery-list-db --remote --file=migrate_agent_accounts.sql
+            d1 execute grocery-list-db --remote --file=migrate_shared_workspace.sql
             pages deploy dist --project-name=grocery-list

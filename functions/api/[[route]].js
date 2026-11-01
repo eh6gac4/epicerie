@@ -1,3 +1,4 @@
+import { SHARED_USER_ID } from '../lib/sharedWorkspace.js'
 import { agentAccounts } from '../lib/agentAccounts.js'
 import { auth, requireUser } from '../lib/auth.js'
 import { Hono } from 'hono'
@@ -63,6 +64,7 @@ app.delete('/lists/:id/members/me', async (c) => {
   if (!await hasAccess(c.env.DB, listId, userId)) return c.json({ error: 'Not found' }, 404)
 
   const list = await c.env.DB.prepare('SELECT created_by FROM lists WHERE id = ?').bind(listId).first()
+  if (c.get('user')?.shared) return c.json({ error: '共有リストからは退出できません（アーカイブしてください）' }, 403)
   if (list?.created_by === userId) {
     return c.json({ error: '作成者は退出できません（削除してください）' }, 403)
   }
@@ -149,7 +151,7 @@ app.delete('/lists/:id', async (c) => {
   const userId = c.get('userId')
   const listId = c.req.param('id')
   const list = await c.env.DB.prepare('SELECT created_by FROM lists WHERE id = ?').bind(listId).first()
-  if (!list || list.created_by !== userId) return c.json({ error: 'Forbidden' }, 403)
+  if (!list || (list.created_by !== userId && !(userId === SHARED_USER_ID && await hasAccess(c.env.DB, listId, userId)))) return c.json({ error: 'Forbidden' }, 403)
 
   // items/list_members は FK CASCADE で自動削除されるが、R2 上の添付ファイル実体は消えないので
   // 先にキーを集めておき、DB 削除と並行して消す
@@ -481,6 +483,9 @@ async function logUserAction(c, action, listId = null, itemId = null, details = 
     const userId = c.get('userId')
     const id = crypto.randomUUID()
     const now = Date.now()
+    if (details) { details = { ...details }; delete details.actor; delete details.agent }
+    const actor = c.get('user')
+    if (actor?.shared && !c.get('agent')) details = { ...details, actor: { provider: actor.provider, id: actor.accountId, name: actor.name } }
     const agent = c.get('agent')
     if (agent) details = { ...details, agent: { id: agent.id, name: agent.name } }
     const stmt = c.env.DB.prepare(

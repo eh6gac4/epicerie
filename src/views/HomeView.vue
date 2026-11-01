@@ -206,7 +206,7 @@ function openListMenu(list) {
 }
 
 function isOwner(list) {
-  return list && myUserId != null && list.created_by === myUserId
+  return list && myUserId != null && (list.created_by === myUserId || currentUser.value?.shared === true)
 }
 
 function isArchived(list) {

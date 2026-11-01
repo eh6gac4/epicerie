@@ -374,3 +374,16 @@ describe('ListView.vue - Agent browser permissions', () => {
     wrapper.unmount()
   })
 })
+
+
+describe('ListView.vue - Shared household management', () => {
+  it('allows shared members to manage original lists without offering a leave action', async () => {
+    const wrapper = mount(ListView, { global: { stubs: { teleport: true }, provide: { currentUser: { value: { provider: 'google', shared: true } } } } })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.find('.menu-btn').trigger('click')
+    const actions = wrapper.findAll('.sheet-btn').map(button => button.text())
+    expect(actions).toContain('削除する')
+    expect(actions).not.toContain('リストから抜ける')
+    wrapper.unmount()
+  })
+})

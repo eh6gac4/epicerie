@@ -14,6 +14,8 @@ Googleログイン、Telegram Mini App認証、エージェント用ID・パス�
 | APP_ORIGIN | 公開URLのオリジン（例 `https://grocery-list.pages.dev`） |
 | GOOGLE_CLIENT_ID | GoogleのOAuthクライアントID |
 | GOOGLE_CLIENT_SECRET | GoogleのOAuthクライアントシークレット |
+| SHARED_DATA_MODE | `true` で許可Googleアカウントと登録済みTelegram利用者の買い物データを共通化 |
+| GOOGLE_ALLOWED_EMAILS | ログインを許可するGoogleアカウントのメールアドレス（カンマ・改行区切り） |
 | TELEGRAM_BOT_TOKEN | 既存のTelegram Mini App認証用ボットトークン（継続して設定） |
 | AGENT_PASSWORD_PEPPER | `openssl rand -hex 32` で別途生成するエージェント用パスワード保護シークレット |
 | SESSION_SECRET | `openssl rand -hex 32` などで生成する32文字以上の秘密値 |
@@ -21,6 +23,10 @@ Googleログイン、Telegram Mini App認証、エージェント用ID・パス�
 
 シークレットをブラウザ用の `VITE_` 変数に設定しない。
 Google OAuthの公開ステータスがテスト中の場合は、利用者をテストユーザーに追加する。
+アプリ側でも `GOOGLE_ALLOWED_EMAILS` の確認済みメールアドレスだけを許可する。未設定・空の場合はGoogleログインを無効にする。
+メールアドレスの大文字・小文字は区別しない。ワイルドカード・ドメイン単位の許可・別名への自動展開は行わない。
+許可を外すと、ログイン済みセッションも次回アクセスから利用できなくなる。ユーザーの識別には従来どおりGoogleの `sub` を使い、メールアドレスは利用許可の判定にのみ使う。
+Googleのテストユーザー設定だけに利用制限を依存させない。
 `TELEGRAM_BOT_TOKEN` は引き続き使用する。`ALLOW_UNAUTH` による認証回避は使用しない。共有リンクは通常のWeb URLを使用する。
 Googleの埋め込みブラウザ制限があるため、通常のブラウザからログインする。
 
@@ -44,10 +50,11 @@ mainへのマージ後、GitHub Actionsがビルド、追加テーブルの移�
 ```sh
 npx wrangler d1 execute grocery-list-db --remote --file=migrate_google_auth.sql
 npx wrangler d1 execute grocery-list-db --remote --file=migrate_agent_accounts.sql
+npx wrangler d1 execute grocery-list-db --remote --file=migrate_shared_workspace.sql
 ```
 
 設定後にアプリをデプロイする。Googleでの実ログイン・ログアウト、リスト操作、添付表示を確認する。
-新規Googleアカウントでは空のリスト一覧になる。既存の共有コードからの参加も可能。
+共有モードでは許可したGoogleアカウントに共通リストを表示する。共有モードを使わない場合は新規アカウントごとの空の一覧になる。
 
 ## Muse用のID・パスワード
 
@@ -81,27 +88,35 @@ npx wrangler d1 execute grocery-list-db --remote --file=migrate_agent_accounts.s
 失敗理由はIDの不存在・パスワード誤り・期限切れ・失効を区別せず返す。
 GoogleおよびTelegramの通常ログインは従来どおり利用できる。
 
-## 既存データの引き継ぎ
+## 共通データと既存データの引き継ぎ
 
-Telegramからは従来どおり既存データを使える。Googleからも同じデータを使う場合のみ以下を行う。
-メールアドレスだけでは既存ユーザーと自動連携しない。
-各利用者がGoogleで一度ログインした後、管理者が本人を確認して対応付ける。
+`SHARED_DATA_MODE=true` の場合、許可した全Googleアカウントと登録済みTelegram利用者が同じリスト・商品・お気に入り・アーカイブ状態・Muse用アカウントを使う。
+Googleの `sub` とTelegramのユーザーIDは本人識別用に保持し、データの所属先には予約ID `0` を使う。
+新しい操作履歴では `details.actor` に本人のプロバイダー・ID・名前を記録する。Muse操作は従来どおり `details.agent` で識別する。
 
-```sql
-SELECT id, google_sub, email FROM app_users;
-SELECT DISTINCT tg_user_id FROM list_members;
-```
+初回移行は以下の順で行う。SQLの `<共有対象のTelegramユーザーID>` は管理者が確認した値に置き換える。
 
-本人のGoogle `google_sub` と旧TelegramユーザーIDを確認し、以下のプレースホルダーを置き換えて実行する。
-新規Googleアカウントでリストやお気に入りを作る前に行う。
+1. `migrate_shared_workspace.sql` を適用して設定テーブルを作成する。共有対象が未登録ならコピーも完了マーカーの作成も行わない。
+2. 共有対象の既存Telegram利用者だけを登録する。
 
 ```sql
-UPDATE app_users SET id = <旧TelegramユーザーID> WHERE google_sub = '<本人のGoogle sub>' AND id < 0;
+INSERT OR IGNORE INTO shared_telegram_users (tg_user_id)
+VALUES (<共有対象のTelegramユーザーID>);
 ```
 
-再ログイン後、既存の所有権・参加リスト・お気に入り・履歴がそのまま使える。
-既存データを別のユーザーに公開することはない。
-新規アカウントで既にデータを作成した場合は、管理者が新旧IDのデータを個別に統合してから変更する。
+3. `migrate_shared_workspace.sql` を再適用する。登録者が所有するリストの共有参加情報とお気に入りをコピーし、既存のMuse用アカウントを共有管理へ移す。
+4. 共有リストとお気に入りの件数を確認してから `SHARED_DATA_MODE=true` を設定し、アプリを公開する。
+
+元のリスト所有者、個人用の参加情報・お気に入りは残す。対象外のテストデータはコピーしない。
+一方の利用者に表示中のリストは共有側でも表示中とし、全員がアーカイブしていたものは共有側でもアーカイブする。
+同名のお気に入りは作成日時が早いものを優先し、共有側には1件だけコピーする。
+完了マーカーがある場合は再コピーしないため、共有側で削除したお気に入りやアーカイブ状態を再実行で復活させることはない。
+共有側でのリスト削除は、そのリスト本体・商品も削除する通常の操作になる。
+
+共有モードでは、未登録のTelegram利用者を自動で参加させない。追加する場合は `shared_telegram_users` への明示的な登録が必要。
+移行完了後に登録者を追加しても、その人の旧データは自動コピーしない。追加のデータ移行は別途行う。
+共通化後の新規データは共有用IDに属するため、共有モードを解除しても個人のデータへ自動で分配されない。
+Google用のユーザーレコードをTelegramのIDへ書き換える手順は不要。
 
 ## ローカル開発
 

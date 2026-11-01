@@ -13,6 +13,16 @@ function render() {
   return wrapper
 }
 describe('Login screen without Telegram', () => {
+  it('explains when the Google account is not allowed', async () => {
+    history.replaceState({}, '', '/?auth_error=not_allowed')
+    api.getMe.mockRejectedValue({ status: 401 })
+    render()
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').text()).toContain('このGoogleアカウントには利用権限がありません')
+    expect(wrapper.find('a').attributes('href')).not.toContain('auth_error')
+    history.replaceState({}, '', '/')
+  })
+
   it('accepts ID/password login, clears the password and hides human settings for the agent', async () => {
     api.getMe.mockRejectedValueOnce({ status: 401 }).mockResolvedValueOnce({ id: 123, name: 'Muse', provider: 'agent', permission: 'read' })
     api.loginAgent.mockResolvedValue({ id: 123 })
