@@ -1,3 +1,5 @@
+import { agentAccounts } from '../lib/agentAccounts.js'
+import { auth, requireUser } from '../lib/auth.js'
 import { Hono } from 'hono'
 import { Buffer } from 'node:buffer'
 import { categorize, categorizeBatch } from '../lib/categorize.js'
@@ -5,41 +7,15 @@ import { extractItemsFromMedia } from '../lib/extractItems.js'
 
 const app = new Hono().basePath('/api')
 
-// Auth middleware
-app.use('*', async (c, next) => {
-  if (c.env.ALLOW_UNAUTH === 'true') {
-    c.set('userId', 999999)
-    return next()
-  }
-
-  const botToken = c.env.TELEGRAM_BOT_TOKEN
-  if (!botToken) return c.json({ error: 'Server misconfigured' }, 500)
-
-  // 1. Try session token
-  const sessionToken = c.req.header('X-Session-Token') || c.req.query('session_token')
-  if (sessionToken) {
-    const result = await verifySession(sessionToken, botToken)
-    if (result.valid) {
-      c.set('userId', result.userId)
-      return next()
-    }
-    // Invalid/expired token — fall through to initData
-  }
-
-  // 2. Try Telegram initData
-  const initData = c.req.header('X-Telegram-Init-Data') || c.req.query('init_data')
-  if (!initData) return c.json({ error: 'Unauthorized' }, 401)
-
-  const result = await validateInitData(initData, botToken)
-  if (!result.valid) return c.json({ error: 'Invalid auth' }, 401)
-
-  c.set('userId', result.userId)
-  return next()
-})
+app.route('/auth', auth)
+app.use('*', requireUser)
+app.route('/agent-accounts', agentAccounts)
 
 // GET /api/lists — アクティブ・アーカイブ済み両方を含めて返す（lm.archived_at で判別）
 app.get('/lists', async (c) => {
   const userId = c.get('userId')
+  const allowedIds = c.get('agent')?.listIds
+  const listFilter = allowedIds ? `AND l.id IN (${allowedIds.map(() => '?').join(',')})` : ''
   const { results } = await c.env.DB.prepare(`
     SELECT l.id, l.name, l.share_code, l.created_by, lm.archived_at,
            COUNT(i.id) AS item_count,
@@ -47,11 +23,11 @@ app.get('/lists', async (c) => {
     FROM lists l
     JOIN list_members lm ON l.id = lm.list_id
     LEFT JOIN items i ON l.id = i.list_id
-    WHERE lm.tg_user_id = ?
+    WHERE lm.tg_user_id = ? ${listFilter}
     GROUP BY l.id
     ORDER BY lm.archived_at IS NOT NULL ASC, l.created_at DESC
-  `).bind(userId).all()
-  return c.json(results)
+  `).bind(userId, ...(allowedIds || [])).all()
+  return c.json(allowedIds ? results.map(({ share_code, ...list }) => list) : results)
 })
 
 // POST /api/lists/:id/archive
@@ -148,6 +124,7 @@ app.get('/lists/:id', async (c) => {
 
   const list = await c.env.DB.prepare('SELECT id, name, share_code, created_by FROM lists WHERE id = ?')
     .bind(listId).first()
+  if (c.get('agent')) { const { share_code, ...visible } = list; return c.json(visible) }
   return c.json(list)
 })
 
@@ -402,14 +379,6 @@ app.delete('/favorites/:id', async (c) => {
   return c.json({ ok: true })
 })
 
-// POST /api/auth/session — issue a signed session token for the authenticated user
-app.post('/auth/session', async (c) => {
-  const userId = c.get('userId')
-  const secret = c.env.TELEGRAM_BOT_TOKEN || 'dev-session-secret'
-  const { token, expiresAt } = await signSession(userId, secret)
-  return c.json({ token, expiresAt })
-})
-
 // Helpers
 
 async function hasAccess(db, listId, userId) {
@@ -421,86 +390,6 @@ async function hasAccess(db, listId, userId) {
 function generateShareCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-}
-
-// Session token helpers
-
-const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
-
-function toBase64url(bytes) {
-  let binary = ''
-  const arr = new Uint8Array(bytes)
-  for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i])
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-}
-
-function fromBase64url(str) {
-  const b64 = str.replace(/-/g, '+').replace(/_/g, '/')
-  return Uint8Array.from(atob(b64), c => c.charCodeAt(0))
-}
-
-async function signSession(userId, secret) {
-  const exp = Date.now() + SESSION_DURATION_MS
-  const payloadB64 = toBase64url(new TextEncoder().encode(JSON.stringify({ uid: userId, exp })))
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  )
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadB64))
-  return { token: `${payloadB64}.${toBase64url(sig)}`, expiresAt: exp }
-}
-
-async function verifySession(token, secret) {
-  try {
-    const dot = token.lastIndexOf('.')
-    if (dot < 1) return { valid: false }
-    const payloadB64 = token.slice(0, dot)
-    const sigB64 = token.slice(dot + 1)
-
-    const key = await crypto.subtle.importKey(
-      'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-    )
-    const expected = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadB64))
-    if (toBase64url(expected) !== sigB64) return { valid: false }
-
-    const payload = JSON.parse(new TextDecoder().decode(fromBase64url(payloadB64)))
-    if (payload.exp <= Date.now()) return { valid: false }
-
-    return { valid: true, userId: payload.uid }
-  } catch {
-    return { valid: false }
-  }
-}
-
-async function validateInitData(initData, botToken) {
-  try {
-    const params = new URLSearchParams(initData)
-    const hash = params.get('hash')
-    if (!hash) return { valid: false }
-    params.delete('hash')
-
-    const dataCheckString = [...params.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
-      .join('\n')
-
-    const enc = new TextEncoder()
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw', enc.encode('WebAppData'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-    )
-    const secretKey = await crypto.subtle.sign('HMAC', keyMaterial, enc.encode(botToken))
-    const hmacKey = await crypto.subtle.importKey(
-      'raw', secretKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-    )
-    const sig = await crypto.subtle.sign('HMAC', hmacKey, enc.encode(dataCheckString))
-    const computed = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
-
-    if (computed !== hash) return { valid: false }
-
-    const user = JSON.parse(params.get('user') || '{}')
-    return { valid: true, userId: user.id }
-  } catch {
-    return { valid: false }
-  }
 }
 
 // GET /api/items/:id/attachments
@@ -592,6 +481,8 @@ async function logUserAction(c, action, listId = null, itemId = null, details = 
     const userId = c.get('userId')
     const id = crypto.randomUUID()
     const now = Date.now()
+    const agent = c.get('agent')
+    if (agent) details = { ...details, agent: { id: agent.id, name: agent.name } }
     const stmt = c.env.DB.prepare(
       'INSERT INTO user_logs (id, tg_user_id, action, list_id, item_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).bind(id, userId, action, listId, itemId, details ? JSON.stringify(details) : null, now)

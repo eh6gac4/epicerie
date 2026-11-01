@@ -68,3 +68,31 @@ CREATE TABLE IF NOT EXISTS user_logs (
 
 CREATE INDEX IF NOT EXISTS idx_user_logs_user ON user_logs(tg_user_id);
 CREATE INDEX IF NOT EXISTS idx_user_logs_list ON user_logs(list_id);
+-- Existing list ownership and memberships remain unchanged.
+CREATE TABLE IF NOT EXISTS app_users (
+  id INTEGER PRIMARY KEY,
+  google_sub TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS agent_accounts (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  login_id TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  permission TEXT NOT NULL CHECK (permission IN ('read', 'items:write')),
+  list_ids TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  last_used_at INTEGER,
+  revoked_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_agent_accounts_user ON agent_accounts(user_id);
+CREATE TABLE IF NOT EXISTS agent_login_attempts (
+  bucket TEXT PRIMARY KEY,
+  attempts INTEGER NOT NULL,
+  window_start INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_attempts_window ON agent_login_attempts(window_start);

@@ -14,12 +14,12 @@
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
           </svg>
         </button>
-        <button class="fav-list-btn" @click="showFavSheet = true" aria-label="よく使うもの">
+        <button v-if="!isAgent" class="fav-list-btn" @click="showFavSheet = true" aria-label="よく使うもの">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
           </svg>
         </button>
-        <button class="share-btn" @click="share" :disabled="!list" aria-label="シェア">
+        <button v-if="!isAgent" class="share-btn" @click="share" :disabled="!list" aria-label="シェア">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="18" cy="5" r="3"/>
             <circle cx="6" cy="12" r="3"/>
@@ -28,7 +28,7 @@
             <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
         </button>
-        <button class="menu-btn" @click="showMenu = true" :disabled="!list" aria-label="メニュー">
+        <button v-if="!isAgent" class="menu-btn" @click="showMenu = true" :disabled="!list" aria-label="メニュー">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="5" r="1.5"/>
             <circle cx="12" cy="12" r="1.5"/>
@@ -54,7 +54,7 @@
           <path d="M50 45v10M45 50h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
         <p class="state-title">まだ何もありません</p>
-        <p class="state-sub">下の入力欄からアイテムを追加できます</p>
+        <p class="state-sub">{{ canWrite ? '下の入力欄からアイテムを追加できます' : 'このリストは空です' }}</p>
       </div>
 
       <template v-else>
@@ -76,7 +76,7 @@
             <span class="cat-label">{{ group.category }}</span>
             <div class="cat-rule" />
             <button
-              v-if="group.category === 'その他'"
+              v-if="!isAgent && group.category === 'その他'"
               class="recat-btn"
               :disabled="recategorizing"
               @click.stop="recategorizeOthers"
@@ -95,7 +95,7 @@
               :class="{ 'item--done': item.checked }"
               @click="openEdit(item)"
             >
-              <div class="checkbox-tap" @click.stop="toggleItem(item)">
+              <div class="checkbox-tap" @click.stop="canWrite && toggleItem(item)">
                 <div class="checkbox" :class="{ 'is-checked': item.checked }">
                   <svg v-if="item.checked" width="11" height="9" viewBox="0 0 11 9" fill="none">
                     <path d="M1 4.5L4 7.5L10 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -118,7 +118,7 @@
               </div>
 
               <!-- quantity controls -->
-              <div v-if="isNumericQty(item)" class="qty-ctrl" @click.stop>
+              <div v-if="canWrite && isNumericQty(item)" class="qty-ctrl" @click.stop>
                 <button class="qty-btn" @click="decrementQty(item)">−</button>
                 <span class="qty-val">{{ item.quantity }}</span>
                 <button class="qty-btn" @click="incrementQty(item)">＋</button>
@@ -126,7 +126,7 @@
               <span v-else-if="item.quantity" class="item-qty">{{ item.quantity }}</span>
 
               <!-- favorite button -->
-              <button class="fav-btn" :class="{ 'is-fav': isFavorite(item) }"
+              <button v-if="!isAgent" class="fav-btn" :class="{ 'is-fav': isFavorite(item) }"
                 @click.stop="toggleFavorite(item)">
                 <svg width="15" height="15" viewBox="0 0 24 24"
                   :fill="isFavorite(item) ? 'currentColor' : 'none'"
@@ -140,7 +140,7 @@
       </template>
     </main>
 
-    <footer class="footer">
+    <footer v-if="canWrite" class="footer">
       <div v-if="showSuggestions" class="suggest-backdrop" @click="blurInput" @touchstart.passive="blurInput"></div>
       <Transition name="suggest">
         <div v-if="showSuggestions" class="suggest-panel">
@@ -158,7 +158,7 @@
       </Transition>
       <div class="input-row">
         <input type="file" ref="fileInput" @change="onFileSelected" accept="image/*,application/pdf" style="display: none;" />
-        <button class="upload-btn" @click="triggerUpload" :disabled="isUploading" aria-label="画像/PDFから追加">
+        <button v-if="!isAgent" class="upload-btn" @click="triggerUpload" :disabled="isUploading" aria-label="画像/PDFから追加">
           <span v-if="isUploading" class="upload-spinner" />
           <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -247,13 +247,14 @@
 
             <div class="field-group">
               <label class="field-label">名前</label>
-              <input v-model="editForm.name" class="sheet-input" maxlength="100" />
+              <input :disabled="!canWrite" v-model="editForm.name" class="sheet-input" maxlength="100" />
             </div>
 
             <div class="field-group">
               <label class="field-label">カテゴリ</label>
               <div class="pills">
                 <button
+                  :disabled="!canWrite"
                   v-for="cat in CATEGORIES"
                   :key="cat"
                   class="pill"
@@ -266,21 +267,21 @@
             <div class="field-group">
               <label class="field-label">数量</label>
               <div class="qty-ctrl-sheet">
-                <button class="qty-btn" @click="decrementEditQty">−</button>
+                <button class="qty-btn" :disabled="!canWrite" @click="decrementEditQty">−</button>
                 <input
-                  v-model="editForm.quantity"
+                  :disabled="!canWrite" v-model="editForm.quantity"
                   class="sheet-input qty-input"
                   placeholder="なし"
                   maxlength="10"
                 />
-                <button class="qty-btn" @click="incrementEditQty">＋</button>
+                <button class="qty-btn" :disabled="!canWrite" @click="incrementEditQty">＋</button>
               </div>
             </div>
 
             <div class="field-group">
               <label class="field-label">メモ</label>
               <textarea
-                v-model="editForm.note"
+                :disabled="!canWrite" v-model="editForm.note"
                 class="sheet-textarea"
                 placeholder="補足・メモ…"
                 maxlength="200"
@@ -298,11 +299,11 @@
                     <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                     <span>{{ att.file_name }}</span>
                   </a>
-                  <button class="attachment-del-btn" @click="deleteAttachment(att.id)" aria-label="削除">
+                  <button v-if="!isAgent" class="attachment-del-btn" @click="deleteAttachment(att.id)" aria-label="削除">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </div>
-                <button class="add-attachment-btn" @click="triggerUploadAttachment" :disabled="isUploadingAttachment">
+                <button v-if="!isAgent" class="add-attachment-btn" @click="triggerUploadAttachment" :disabled="isUploadingAttachment">
                   <span v-if="isUploadingAttachment" class="upload-spinner" style="width: 14px; height: 14px;" />
                   <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   ファイルを追加
@@ -311,8 +312,8 @@
               </div>
             </div>
 
-            <button class="sheet-btn" @click="saveEdit">保存する</button>
-            <button class="sheet-btn sheet-btn--danger" @click="confirmDeleteFromEdit">削除する</button>
+            <button v-if="canWrite" class="sheet-btn" @click="saveEdit">保存する</button>
+            <button v-if="!isAgent" class="sheet-btn sheet-btn--danger" @click="confirmDeleteFromEdit">削除する</button>
           </div>
         </div>
       </Transition>
@@ -429,13 +430,16 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { inject, ref, computed, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../composables/useApi.js'
 import { getWebApp, getMyUserId } from '../composables/useTelegram.js'
 import { useListActions } from '../composables/useListActions.js'
 import { CATEGORIES, SUGGESTIONS } from '../data/suggestions.js'
 
+const currentUser = inject('currentUser', ref(null))
+const isAgent = computed(() => currentUser.value?.provider === 'agent')
+const canWrite = computed(() => !isAgent.value || currentUser.value.permission === 'items:write')
 const route = useRoute()
 const router = useRouter()
 const listId = route.params.id
@@ -530,6 +534,7 @@ const showSuggestions = computed(() => inputFocused.value && !!newItem.value.tri
 
 // ── Rename sheet ─────────────────────────────────────────────
 function openRename() {
+  if (isAgent.value) return
   if (!list.value) return
   renameName.value = list.value.name
   showRename.value = true
@@ -925,6 +930,7 @@ async function loadItems() {
 }
 
 async function loadFavorites() {
+  if (isAgent.value) return
   try { favorites.value = await api.getFavorites() } catch { /* ignore */ }
 }
 
@@ -937,10 +943,10 @@ function share() {
 async function copyShareLink() {
   const code = list.value?.share_code
   if (!code) return
-  const botUsername = import.meta.env.VITE_BOT_USERNAME
-  const url = botUsername ? `https://t.me/${botUsername}?startapp=${code}` : `シェアコード: ${code}`
+  const url = new URL('/', window.location.origin)
+  url.searchParams.set('startapp', code)
   try {
-    await navigator.clipboard.writeText(url)
+    await navigator.clipboard.writeText(url.href)
     showToast('リンクをコピーしました')
   } catch {
     showToast('コピーできませんでした')
