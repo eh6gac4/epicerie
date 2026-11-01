@@ -46,15 +46,14 @@ async function login(account, password = account.password, headers = {}) {
 beforeEach(async () => {
   sqlite = new DatabaseSync(':memory:')
   sqlite.exec(readFileSync(new URL('../../schema.sql', import.meta.url), 'utf8'))
-  sqlite.exec(`INSERT INTO app_users VALUES (101,'google-owner','owner@example.com','Owner'),(202,'google-other','other@example.com','Other');
-    INSERT INTO lists VALUES ('list-a','A','AAAAAA',101,1),('list-b','B','BBBBBB',101,2),('foreign','Private','FFFFFF',202,3);
+  sqlite.exec(`INSERT INTO lists VALUES ('list-a','A','AAAAAA',101,1),('list-b','B','BBBBBB',101,2),('foreign','Private','FFFFFF',202,3);
     INSERT INTO list_members(list_id,tg_user_id,joined_at) VALUES ('list-a',101,1),('list-b',101,1),('foreign',202,1);
     INSERT INTO items(id,list_id,name,added_by,created_at,updated_at) VALUES ('item-a','list-a','Milk',101,1,1),('item-b','list-b','Secret',101,1,1);
     INSERT INTO item_attachments VALUES ('att-a','item-a','a.png','image/png','key-a',1),('att-b','item-b','b.png','image/png','key-b',1);`)
   env = { DB: d1(sqlite), SESSION_SECRET: 's'.repeat(64), AGENT_PASSWORD_PEPPER: 'p'.repeat(64), APP_ORIGIN: 'https://shop.example', GOOGLE_ALLOWED_EMAILS: 'owner@example.com,other@example.com',
     BUCKET: { async delete() {}, async get() { return { body: 'image', httpEtag: 'etag', writeHttpMetadata(headers) { headers.set('Content-Type', 'image/png') } } } } }
-  ownerCookie = (await generateSignedCookie('epicerie_session', JSON.stringify({ userId: 101, expiresAt: Date.now() + 60_000 }), env.SESSION_SECRET)).split(';')[0]
-  otherCookie = (await generateSignedCookie('epicerie_session', JSON.stringify({ userId: 202, expiresAt: Date.now() + 60_000 }), env.SESSION_SECRET)).split(';')[0]
+  ownerCookie = (await generateSignedCookie('epicerie_session', JSON.stringify({ provider: 'telegram', userId: 101, expiresAt: Date.now() + 60_000 }), env.SESSION_SECRET)).split(';')[0]
+  otherCookie = (await generateSignedCookie('epicerie_session', JSON.stringify({ provider: 'telegram', userId: 202, expiresAt: Date.now() + 60_000 }), env.SESSION_SECRET)).split(';')[0]
 })
 afterEach(() => sqlite.close())
 
@@ -202,12 +201,12 @@ describe('Shared household data with separate identities', () => {
     expect(sqlite.prepare("SELECT archived_at FROM list_members WHERE list_id='list-a' AND tg_user_id=0").get().archived_at).toBe(123)
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM data_migrations').get().n).toBe(1)
   })
-  it('shows the same lists and favorites to two allowed Google accounts while retaining their actual identity', async () => {
+  it('shows the same lists and favorites to two enrolled Telegram accounts while retaining their actual identity', async () => {
     prepareSharedData()
     const first = await (await call('/auth/me', { cookie: ownerCookie })).json()
     const second = await (await call('/auth/me', { cookie: otherCookie })).json()
-    expect(first).toMatchObject({ id: 0, accountId: 101, shared: true, provider: 'google' })
-    expect(second).toMatchObject({ id: 0, accountId: 202, shared: true, provider: 'google' })
+    expect(first).toMatchObject({ id: 0, accountId: 101, shared: true, provider: 'telegram' })
+    expect(second).toMatchObject({ id: 0, accountId: 202, shared: true, provider: 'telegram' })
     const lists = await (await call('/lists', { cookie: ownerCookie })).json()
     expect(new Set(lists.map(list => list.id))).toEqual(new Set(['list-a','list-b','foreign']))
     expect(await (await call('/lists', { cookie: otherCookie })).json()).toEqual(lists)
@@ -217,7 +216,7 @@ describe('Shared household data with separate identities', () => {
     const created = await (await call('/lists', { method: 'POST', cookie: ownerCookie, body: { name: 'Shared new list' } })).json()
     expect((await (await call('/lists', { cookie: otherCookie })).json()).some(list => list.id === created.id)).toBe(true)
     const details = JSON.parse(sqlite.prepare("SELECT details FROM user_logs WHERE action='CREATE_LIST'").get().details)
-    expect(details.actor).toMatchObject({ provider: 'google', id: 101 })
+    expect(details.actor).toMatchObject({ provider: 'telegram', id: 101 })
   })
   it('lets shared members manage legacy lists without changing original owners or exposing excluded lists', async () => {
     prepareSharedData()

@@ -1,44 +1,32 @@
 # épicerie
 
-Googleログイン、Telegram Mini App認証、エージェント用ID・パスワードに対応した買い物リスト。通常のブラウザからはGoogle、Telegramからは従来のユーザーIDで利用できる。Museなどのブラウザ操作エージェントはログイン画面でID・パスワードを入力する。
+Telegram Mini App認証と、Telegramから発行するID・パスワードに対応した買い物リスト。Museなどのブラウザ操作エージェントはWebログイン画面でID・パスワードを入力する。
 
-## Googleログインの設定
+## 本番設定
 
-1. Google Cloud ConsoleでOAuthクライアント（ウェブアプリケーション）を作成する。
-2. 承認済みリダイレクトURIに `https://<公開ドメイン>/api/auth/google/callback` を登録する。
-3. ローカル開発用には `http://localhost:5173/api/auth/google/callback` も登録する。
-4. Cloudflare Pagesの本番・プレビュー環境それぞれに以下を設定する。プレビューは固定ドメインと別クライアントを推奨する。
+Cloudflare Pagesの本番環境に以下を設定する。
 
 | 変数 | 値 |
 | --- | --- |
-| APP_ORIGIN | 公開URLのオリジン（例 `https://grocery-list.pages.dev`） |
-| GOOGLE_CLIENT_ID | GoogleのOAuthクライアントID |
-| GOOGLE_CLIENT_SECRET | GoogleのOAuthクライアントシークレット |
-| SHARED_DATA_MODE | `true` で許可Googleアカウントと登録済みTelegram利用者の買い物データを共通化 |
-| GOOGLE_ALLOWED_EMAILS | ログインを許可するGoogleアカウントのメールアドレス（カンマ・改行区切り） |
-| TELEGRAM_BOT_TOKEN | 既存のTelegram Mini App認証用ボットトークン（継続して設定） |
-| AGENT_PASSWORD_PEPPER | `openssl rand -hex 32` で別途生成するエージェント用パスワード保護シークレット |
-| SESSION_SECRET | `openssl rand -hex 32` などで生成する32文字以上の秘密値 |
-| GEMINI_API_KEY | 既存の画像・カテゴリ分類用キー |
+| APP_ORIGIN | `https://grocery-list-9m8.pages.dev` |
+| TELEGRAM_BOT_TOKEN | 登録済みTelegram Mini Appのボットトークン |
+| SESSION_SECRET | `openssl rand -hex 32` で生成する32文字以上の秘密値 |
+| AGENT_PASSWORD_PEPPER | 上記とは別に生成する32文字以上のパスワード保護シークレット |
+| SHARED_DATA_MODE | `true` で登録済み利用者の買い物データを共通化 |
+| GEMINI_API_KEY | 画像・カテゴリ分類用キー |
 
 シークレットをブラウザ用の `VITE_` 変数に設定しない。
-Google OAuthの公開ステータスがテスト中の場合は、利用者をテストユーザーに追加する。
-アプリ側でも `GOOGLE_ALLOWED_EMAILS` の確認済みメールアドレスだけを許可する。未設定・空の場合はGoogleログインを無効にする。
-メールアドレスの大文字・小文字は区別しない。ワイルドカード・ドメイン単位の許可・別名への自動展開は行わない。
-許可を外すと、ログイン済みセッションも次回アクセスから利用できなくなる。ユーザーの識別には従来どおりGoogleの `sub` を使い、メールアドレスは利用許可の判定にのみ使う。
-Googleのテストユーザー設定だけに利用制限を依存させない。
-`TELEGRAM_BOT_TOKEN` は引き続き使用する。`ALLOW_UNAUTH` による認証回避は使用しない。共有リンクは通常のWeb URLを使用する。
-Googleの埋め込みブラウザ制限があるため、通常のブラウザからログインする。
+Google認証の設定は不要。以前のGoogle用シークレットも使用しない。
 
 ## Telegram認証の継続
 
-既存の `TELEGRAM_BOT_TOKEN` を保持する。Telegram単独の利用にはGoogleの設定や新しいテーブルを必要としない。
+既存の `TELEGRAM_BOT_TOKEN` を保持する。Telegram内ではボットの署名付き起動データで本人を確認する。
 Telegram起動時は署名付きの起動データをサーバーで確認し、従来と同じユーザーIDのHttpOnly Cookieを発行する。
 起動データは24時間以内のものを受け付ける。発行済みのセッションは30日間有効。
 以前のローカルストレージのセッションも初回起動時にCookieへ交換する。
 旧クライアント用の `/api/auth/session` と認証ヘッダー・添付用クエリも引き続き受け付ける。
 ログアウト後、Telegram内でアプリを開き直すと再認証する。
-Googleと併用する際は `SESSION_SECRET` を設定する。未設定時はTelegram Cookieの署名にボットトークンを使用する。
+ブラウザ用セッションには `SESSION_SECRET` を設定する。未設定時はTelegram Cookieの署名にボットトークンを使用する。
 署名用の値を変更すると既存Cookieは無効になり、再ログインが必要になる。
 
 ## デプロイ
@@ -48,17 +36,16 @@ mainへのマージ後、GitHub Actionsがビルド、追加テーブルの移�
 手動で公開する場合は、アプリのデプロイ前に以下を実行する。既存テーブルは変更しない。
 
 ```sh
-npx wrangler d1 execute grocery-list-db --remote --file=migrate_google_auth.sql
 npx wrangler d1 execute grocery-list-db --remote --file=migrate_agent_accounts.sql
 npx wrangler d1 execute grocery-list-db --remote --file=migrate_shared_workspace.sql
 ```
 
-設定後にアプリをデプロイする。Googleでの実ログイン・ログアウト、リスト操作、添付表示を確認する。
-共有モードでは許可したGoogleアカウントに共通リストを表示する。共有モードを使わない場合は新規アカウントごとの空の一覧になる。
+設定後にアプリをデプロイする。TelegramとID・パスワードでのログイン・ログアウト、リスト操作、添付表示を確認する。
+共有モードでは登録済みTelegram利用者と発行したアカウントが共通リストを利用する。
 
 ## Muse用のID・パスワード
 
-1. GoogleまたはTelegramで本人としてログインする。
+1. 登録済みのTelegramからアプリを開く。
 2. 画面上部の「エージェント設定」を開く。
 3. 名前（例 `Muse`）、ログインID（例 `muse-shopping`）、対象リスト、権限、有効期限を指定する。
 4. 発行時に表示されるIDと自動生成パスワードをMuseのログイン情報として保存する。
@@ -86,12 +73,12 @@ npx wrangler d1 execute grocery-list-db --remote --file=migrate_shared_workspace
 
 ログイン試行は15分間で同一IP・ログインIDの組合せごとに10回、同一IP全体で50回までに制限する。
 失敗理由はIDの不存在・パスワード誤り・期限切れ・失効を区別せず返す。
-GoogleおよびTelegramの通常ログインは従来どおり利用できる。
+Telegram内での通常利用は従来どおり継続できる。
 
 ## 共通データと既存データの引き継ぎ
 
-`SHARED_DATA_MODE=true` の場合、許可した全Googleアカウントと登録済みTelegram利用者が同じリスト・商品・お気に入り・アーカイブ状態・Muse用アカウントを使う。
-Googleの `sub` とTelegramのユーザーIDは本人識別用に保持し、データの所属先には予約ID `0` を使う。
+`SHARED_DATA_MODE=true` の場合、登録済みTelegram利用者と発行したアカウントが同じリスト・商品・お気に入り・アーカイブ状態・Muse用アカウントを使う。
+TelegramのユーザーIDは本人識別用に保持し、データの所属先には予約ID `0` を使う。
 新しい操作履歴では `details.actor` に本人のプロバイダー・ID・名前を記録する。Muse操作は従来どおり `details.agent` で識別する。
 
 初回移行は以下の順で行う。SQLの `<共有対象のTelegramユーザーID>` は管理者が確認した値に置き換える。
@@ -116,7 +103,7 @@ VALUES (<共有対象のTelegramユーザーID>);
 共有モードでは、未登録のTelegram利用者を自動で参加させない。追加する場合は `shared_telegram_users` への明示的な登録が必要。
 移行完了後に登録者を追加しても、その人の旧データは自動コピーしない。追加のデータ移行は別途行う。
 共通化後の新規データは共有用IDに属するため、共有モードを解除しても個人のデータへ自動で分配されない。
-Google用のユーザーレコードをTelegramのIDへ書き換える手順は不要。
+既存のGoogle用テーブルを含め、使用しなくなったテーブルの削除は行わない。
 
 ## ローカル開発
 
@@ -130,12 +117,10 @@ npm run dev
 ```
 
 ブラウザでは `http://localhost:5173` を開く。
-Googleログイン後のセッションはHttpOnly Cookieに30日間保存する。
+ログインセッションはHttpOnly Cookieに最大30日間保存する。
 
 ## 仕様の参照
 
-- https://developers.google.com/identity/protocols/oauth2/web-server
-- https://developers.google.com/identity/openid-connect/openid-connect
 
 - https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
 

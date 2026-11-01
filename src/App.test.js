@@ -13,16 +13,6 @@ function render() {
   return wrapper
 }
 describe('Login screen without Telegram', () => {
-  it('explains when the Google account is not allowed', async () => {
-    history.replaceState({}, '', '/?auth_error=not_allowed')
-    api.getMe.mockRejectedValue({ status: 401 })
-    render()
-    await flushPromises()
-    expect(wrapper.find('[role="alert"]').text()).toContain('このGoogleアカウントには利用権限がありません')
-    expect(wrapper.find('a').attributes('href')).not.toContain('auth_error')
-    history.replaceState({}, '', '/')
-  })
-
   it('accepts ID/password login, clears the password and hides human settings for the agent', async () => {
     api.getMe.mockRejectedValueOnce({ status: 401 }).mockResolvedValueOnce({ id: 123, name: 'Muse', provider: 'agent', permission: 'read' })
     api.loginAgent.mockResolvedValue({ id: 123 })
@@ -49,13 +39,13 @@ describe('Login screen without Telegram', () => {
     expect(wrapper.find('[role="alert"]').text()).toContain('正しくありません')
     expect(wrapper.find('[name="password"]').element.value).toBe('')
   })
-  it('shows Google login and hides the app for a visitor', async () => {
+  it('shows password login and Telegram issuance guidance for a visitor', async () => {
     api.getMe.mockRejectedValue({ status: 401 })
     render()
     await flushPromises()
-    expect(wrapper.text()).toContain('Googleでログイン')
+    expect(wrapper.text()).toContain('登録済みのTelegram')
     expect(wrapper.find('[data-test="lists"]').exists()).toBe(false)
-    expect(wrapper.find('a').attributes('href')).toContain('/api/auth/google?returnTo=')
+    expect(wrapper.text()).not.toContain('Googleでログイン')
   })
   it('sets the server user ID before mounting lists and logs out', async () => {
     api.getMe.mockResolvedValue({ id: 123, name: 'Owner', email: 'owner@example.com' })
@@ -67,7 +57,7 @@ describe('Login screen without Telegram', () => {
     await wrapper.find('.account button').trigger('click')
     await flushPromises()
     expect(getMyUserId()).toBe(null)
-    expect(wrapper.text()).toContain('Googleでログイン')
+    expect(wrapper.text()).toContain('登録済みのTelegram')
   })
   it('returns to login when the API reports an expired session', async () => {
     api.getMe.mockResolvedValue({ id: 123, name: 'Owner' })

@@ -16,7 +16,7 @@
       <input id="login-password" v-model="password" name="password" type="password" autocomplete="current-password" required maxlength="128" />
       <button type="submit" :disabled="signingIn">{{ signingIn ? 'ログイン中…' : 'ID・パスワードでログイン' }}</button>
     </form>
-    <a :href="loginUrl">Googleでログイン</a>
+    <p class="login-guide">登録済みのTelegramからアプリを開き、ログイン用アカウントを発行してください。</p>
     <button v-if="error" @click="loadUser">再読み込み</button>
   </main>
 </template>
@@ -32,11 +32,7 @@ const loginId = ref('')
 const password = ref('')
 const signingIn = ref(false)
 const loading = ref(true)
-const authError = new URLSearchParams(location.search).get('auth_error')
-const error = ref(authError === 'not_allowed' ? 'このGoogleアカウントには利用権限がありません。' : authError ? 'ログインできませんでした。もう一度お試しください。' : '')
-const returnUrl = new URL(location.href)
-returnUrl.searchParams.delete('auth_error')
-const loginUrl = '/api/auth/google?returnTo=' + encodeURIComponent(returnUrl.pathname + returnUrl.search)
+const error = ref('')
 function clearUser() { user.value = null; setMyUserId(null) }
 async function loadUser() {
   loading.value = true
@@ -89,7 +85,7 @@ onUnmounted(() => window.removeEventListener('auth-required', clearUser))
 .password-login button { padding: 14px; background: var(--tg-button); color: var(--tg-button-text); border-radius: var(--radius); }
 .password-login button:disabled { opacity: .5; }
 .login h1 { font-family: var(--font-serif); font-size: 48px; margin: 0; }
-.login a { padding: 14px 24px; background: var(--tg-button); color: var(--tg-button-text); border-radius: var(--radius); text-decoration: none; }
+.login-guide { max-width: 320px; color: var(--tg-hint); font-size: 13px; line-height: 1.8; }
 .account { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding: 10px 20px; font-size: 12px; }
 .account button { text-decoration: underline; }
 
