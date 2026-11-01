@@ -10,6 +10,7 @@ const app = new Hono().basePath('/api')
 
 app.route('/auth', auth)
 app.use('*', requireUser)
+app.route('/accounts', agentAccounts)
 app.route('/agent-accounts', agentAccounts)
 
 // GET /api/lists — アクティブ・アーカイブ済み両方を含めて返す（lm.archived_at で判別）

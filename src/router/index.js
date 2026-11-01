@@ -6,7 +6,8 @@ import ListView from '../views/ListView.vue'
 export default createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/settings/agents', component: AgentAccountsView },
+    { path: '/settings/accounts', component: AgentAccountsView },
+    { path: '/settings/agents', redirect: '/settings/accounts' },
     { path: '/', component: HomeView },
     { path: '/list/:id', component: ListView },
   ],

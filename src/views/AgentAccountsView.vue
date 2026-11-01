@@ -1,25 +1,27 @@
 <template>
   <main class="agents">
     <a href="/" class="back">← 買い物リスト</a>
-    <h1>エージェント設定</h1>
-    <p class="intro">エージェントごとに、使えるリストと操作を指定できます。</p>
+    <h1>アカウント管理</h1>
+    <p class="intro">家族用とエージェント用のログイン情報をTelegramから発行できます。</p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="loading">読み込み中…</p>
     <button v-if="loadFailed" @click="load">再読み込み</button>
     <form v-if="!loading && !loadFailed" @submit.prevent="create" class="panel">
       <h2>アカウントを発行</h2>
-      <label>エージェント名<input v-model="name" required maxlength="80" placeholder="例：買い物アシスタント" /></label>
-      <label>ログインID<input v-model="loginId" required minlength="3" maxlength="64" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}" placeholder="例：muse-shopping" autocomplete="off" /></label>
+      <label>用途<select v-model="accountType" name="accountType"><option value="family">家族用</option><option value="agent">エージェント用（Museなど）</option></select></label>
+      <label>表示名<input v-model="name" required maxlength="80" :placeholder="accountType === 'family' ? '例：家族の名前' : '例：買い物アシスタント'" /></label>
+      <label>ログインID<input v-model="loginId" required minlength="3" maxlength="64" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}" :placeholder="accountType === 'family' ? '例：fumiko' : '例：muse-shopping'" autocomplete="off" /></label>
       <p class="hint">パスワードは発行時に自動生成されます。</p>
-      <label>権限<select v-model="permission"><option value="read">閲覧のみ</option><option value="items:write">閲覧・商品の追加と更新</option></select></label>
-      <p class="hint">リストや商品の削除、メンバー変更、設定の操作は許可されません。</p>
-      <fieldset>
+      <label v-if="accountType === 'agent'">権限<select v-model="permission"><option value="read">閲覧のみ</option><option value="items:write">閲覧・商品の追加と更新</option></select></label>
+      <p v-if="accountType === 'agent'" class="hint">リストや商品の削除、メンバー変更、設定の操作は許可されません。</p>
+      <p v-else class="hint">共通の全リストとお気に入りを通常操作できます。追加されるリストも利用でき、有効期限はありません。発行・失効はTelegramから行います。</p>
+      <fieldset v-if="accountType === 'agent'">
         <legend>対象リスト</legend>
         <p v-if="!lists.length">先に買い物リストを作成するか、共有コードで参加してください。</p>
         <label v-for="list in lists" :key="list.id" class="check"><input v-model="listIds" type="checkbox" :value="list.id" />{{ list.name }}</label>
       </fieldset>
-      <label>有効期限<select v-model.number="expiresInDays"><option :value="7">7日</option><option :value="30">30日</option><option :value="90">90日</option></select></label>
-      <button type="submit" class="primary" :disabled="busy || !!created || !name.trim() || !loginId.trim() || !listIds.length">{{ busy ? '処理中…' : 'アカウントを発行' }}</button>
+      <label v-if="accountType === 'agent'">有効期限<select v-model.number="expiresInDays"><option :value="7">7日</option><option :value="30">30日</option><option :value="90">90日</option></select></label>
+      <button type="submit" class="primary" :disabled="busy || !!created || !name.trim() || !loginId.trim() || (accountType === 'agent' && !listIds.length)">{{ busy ? '処理中…' : 'アカウントを発行' }}</button>
     </form>
     <section v-if="created" class="panel secret" aria-label="発行したアカウント">
       <h2>ログイン情報を保存してください</h2>
@@ -34,15 +36,16 @@
       <p v-if="!accounts.length">まだ発行していません。</p>
       <article v-for="account in accounts" :key="account.id" class="agent-account">
         <div class="account-heading"><strong>{{ account.name }}</strong><span>{{ status(account) }}</span></div>
-        <p>{{ account.permission === 'read' ? '閲覧のみ' : '閲覧・商品の追加と更新' }}</p>
-        <p>対象：{{ account.listIds.map(id => lists.find(list => list.id === id)?.name || id).join('、') }}</p>
-        <p class="hint">ID：{{ account.loginId }}<br />有効期限：{{ date(account.expiresAt) }}<br />最終利用：{{ account.lastUsedAt ? date(account.lastUsedAt) : '未使用' }}</p>
-        <button v-if="!account.revokedAt && account.expiresAt > now" @click="revoke(account)" :disabled="busy" class="revoke">失効させる</button>
+        <p>{{ account.accountType === 'family' ? '家族用・共通データを通常操作' : account.permission === 'read' ? 'エージェント用・閲覧のみ' : 'エージェント用・閲覧と商品の追加・更新' }}</p>
+        <p v-if="account.accountType === 'family'">対象：共通の全リスト（今後の追加分を含む）</p>
+        <p v-else>対象：{{ account.listIds.map(id => lists.find(list => list.id === id)?.name || id).join('、') }}</p>
+        <p class="hint">ID：{{ account.loginId }}<br />有効期限：{{ account.expiresAt == null ? '期限なし' : date(account.expiresAt) }}<br />最終利用：{{ account.lastUsedAt ? date(account.lastUsedAt) : '未使用' }}</p>
+        <button v-if="!account.revokedAt && (account.expiresAt == null || account.expiresAt > now)" @click="revoke(account)" :disabled="busy" class="revoke">失効させる</button>
       </article>
     </section>
     <section class="panel usage">
-      <h2>Museからの利用</h2>
-      <p>このアプリのURLをMuseで開き、ログイン画面に発行したIDとパスワードを入力してください。</p>
+      <h2>ブラウザからの利用</h2>
+      <p>家族は通常のブラウザで、Museはブラウザ操作でこのアプリを開き、発行したIDとパスワードを入力してください。</p>
       <p class="hint">発行したアカウントの権限で画面を操作できます。失効させると、ログイン済みのセッションも利用できなくなります。</p>
     </section>
   </main>
@@ -57,6 +60,7 @@ const lists = ref([])
 const accounts = ref([])
 const name = ref('')
 const loginId = ref('')
+const accountType = ref('family')
 const permission = ref('read')
 const listIds = ref([])
 const expiresInDays = ref(30)
@@ -83,7 +87,9 @@ async function create() {
   busy.value = true
   error.value = ''
   try {
-    const result = await api.createAgentAccount({ name: name.value.trim(), loginId: loginId.value.trim(), permission: permission.value, listIds: listIds.value, expiresInDays: expiresInDays.value })
+    const data = { name: name.value.trim(), loginId: loginId.value.trim(), accountType: accountType.value }
+    if (accountType.value === 'agent') Object.assign(data, { permission: permission.value, listIds: listIds.value, expiresInDays: expiresInDays.value })
+    const result = await api.createAgentAccount(data)
     created.value = result
     copied.value = false
     const { password, ...metadata } = result
@@ -106,7 +112,7 @@ async function revoke(account) {
 }
 async function copy() {
   try { await navigator.clipboard.writeText(created.value.password); copied.value = true }
-  catch { error.value = 'コピーできませんでした。アカウントを選択して保存してください。' }
+  catch { error.value = 'コピーできませんでした。パスワードを選択して保存してください。' }
 }
 onMounted(() => { load(); timer = setInterval(() => { now.value = Date.now() }, 30_000) })
 onUnmounted(() => { clearInterval(timer); created.value = null })

@@ -13,14 +13,19 @@ function render() {
   return wrapper
 }
 describe('Login screen without Telegram', () => {
-  it('explains when the Google account is not allowed', async () => {
-    history.replaceState({}, '', '/?auth_error=not_allowed')
-    api.getMe.mockRejectedValue({ status: 401 })
+  it('logs family into the normal app without exposing Telegram account management', async () => {
+    api.getMe.mockRejectedValueOnce({ status: 401 }).mockResolvedValueOnce({ id: 0, accountId: 'family-id', name: 'Family', provider: 'family', shared: true })
+    api.loginAgent.mockResolvedValue({ id: 0 })
     render()
     await flushPromises()
-    expect(wrapper.find('[role="alert"]').text()).toContain('このGoogleアカウントには利用権限がありません')
-    expect(wrapper.find('a').attributes('href')).not.toContain('auth_error')
-    history.replaceState({}, '', '/')
+    await wrapper.find('[name="username"]').setValue('family-browser')
+    await wrapper.find('[name="password"]').setValue('family-password')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('[data-test="lists"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/settings/accounts"]').exists()).toBe(false)
+    expect(getMyUserId()).toBe(0)
+    expect(wrapper.text()).toContain('Family')
   })
 
   it('accepts ID/password login, clears the password and hides human settings for the agent', async () => {
@@ -34,7 +39,7 @@ describe('Login screen without Telegram', () => {
     await flushPromises()
     expect(api.loginAgent).toHaveBeenCalledWith('muse-shopping', 'generated-password')
     expect(wrapper.find('[data-test="lists"]').exists()).toBe(true)
-    expect(wrapper.find('a[href="/settings/agents"]').exists()).toBe(false)
+    expect(wrapper.find('a[href="/settings/accounts"]').exists()).toBe(false)
     expect(wrapper.html()).not.toContain('generated-password')
   })
   it('shows failed password login without exposing the password', async () => {
@@ -49,13 +54,13 @@ describe('Login screen without Telegram', () => {
     expect(wrapper.find('[role="alert"]').text()).toContain('正しくありません')
     expect(wrapper.find('[name="password"]').element.value).toBe('')
   })
-  it('shows Google login and hides the app for a visitor', async () => {
+  it('shows password login and Telegram issuance guidance for a visitor', async () => {
     api.getMe.mockRejectedValue({ status: 401 })
     render()
     await flushPromises()
-    expect(wrapper.text()).toContain('Googleでログイン')
+    expect(wrapper.text()).toContain('登録済みのTelegram')
     expect(wrapper.find('[data-test="lists"]').exists()).toBe(false)
-    expect(wrapper.find('a').attributes('href')).toContain('/api/auth/google?returnTo=')
+    expect(wrapper.text()).not.toContain('Googleでログイン')
   })
   it('sets the server user ID before mounting lists and logs out', async () => {
     api.getMe.mockResolvedValue({ id: 123, name: 'Owner', email: 'owner@example.com' })
@@ -67,7 +72,7 @@ describe('Login screen without Telegram', () => {
     await wrapper.find('.account button').trigger('click')
     await flushPromises()
     expect(getMyUserId()).toBe(null)
-    expect(wrapper.text()).toContain('Googleでログイン')
+    expect(wrapper.text()).toContain('登録済みのTelegram')
   })
   it('returns to login when the API reports an expired session', async () => {
     api.getMe.mockResolvedValue({ id: 123, name: 'Owner' })

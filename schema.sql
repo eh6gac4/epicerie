@@ -68,13 +68,6 @@ CREATE TABLE IF NOT EXISTS user_logs (
 
 CREATE INDEX IF NOT EXISTS idx_user_logs_user ON user_logs(tg_user_id);
 CREATE INDEX IF NOT EXISTS idx_user_logs_list ON user_logs(list_id);
--- Existing list ownership and memberships remain unchanged.
-CREATE TABLE IF NOT EXISTS app_users (
-  id INTEGER PRIMARY KEY,
-  google_sub TEXT NOT NULL UNIQUE,
-  email TEXT NOT NULL,
-  name TEXT NOT NULL DEFAULT ''
-);
 CREATE TABLE IF NOT EXISTS agent_accounts (
   id TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
@@ -103,4 +96,9 @@ CREATE TABLE IF NOT EXISTS shared_telegram_users (
 CREATE TABLE IF NOT EXISTS data_migrations (
   name TEXT PRIMARY KEY,
   applied_at INTEGER NOT NULL
+);
+-- Separate membership marker: existing password accounts remain agents by default.
+CREATE TABLE IF NOT EXISTS family_accounts (
+  account_id TEXT PRIMARY KEY,
+  FOREIGN KEY (account_id) REFERENCES agent_accounts(id) ON DELETE CASCADE
 );
