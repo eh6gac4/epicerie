@@ -1,9 +1,30 @@
 import { getWebApp } from './useTelegram.js'
 
-async function request(method, path, body, extraHeaders = {}) {
+// --- 更新系リクエストの追跡 ---
+// 楽観的更新（チェック・数量変更・追加・削除）は呼び出し元で await されないため、
+// 直後にリスト一覧へ戻ると PATCH/POST の完了前に GET /api/lists が走り、古い集計が表示される。
+// 進行中の更新系リクエストを覚えておき、一覧の再読み込み前に待てるようにする。
+const pendingWrites = new Set()
+
+function trackWrite(promise) {
+  const tracked = promise.catch(() => {}).finally(() => { pendingWrites.delete(tracked) })
+  pendingWrites.add(tracked)
+  return promise
+}
+
+// 進行中の更新系リクエストが全て終わるまで待つ。
+// 待っている間に新しい更新が始まることもあるので空になるまで繰り返す（暴走防止に上限あり）。
+export async function settlePendingWrites(maxRounds = 5) {
+  for (let i = 0; i < maxRounds && pendingWrites.size > 0; i++) {
+    await Promise.all([...pendingWrites])
+  }
+}
+
+async function rawRequest(method, path, body, extraHeaders = {}) {
   const res = await fetch(path, {
     method,
     credentials: 'same-origin',
+    cache: 'no-store',
     headers: { ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...extraHeaders },
     body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
   })
@@ -16,6 +37,11 @@ async function request(method, path, body, extraHeaders = {}) {
     throw error
   }
   return res.status === 204 ? undefined : res.json()
+}
+
+function request(method, path, body, extraHeaders = {}) {
+  const promise = rawRequest(method, path, body, extraHeaders)
+  return method === 'GET' ? promise : trackWrite(promise)
 }
 
 export const api = {
