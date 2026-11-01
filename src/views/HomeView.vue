@@ -318,7 +318,7 @@ function showToast(msg, ms = 2500) {
 
 async function handleStartParam() {
   const tg = getWebApp()
-  const code = tg?.initDataUnsafe?.start_param
+  const code = new URLSearchParams(location.search).get('startapp') || tg?.initDataUnsafe?.start_param
   if (!code) return
   try {
     const list = await api.joinList(code)

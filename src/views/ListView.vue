@@ -937,10 +937,10 @@ function share() {
 async function copyShareLink() {
   const code = list.value?.share_code
   if (!code) return
-  const botUsername = import.meta.env.VITE_BOT_USERNAME
-  const url = botUsername ? `https://t.me/${botUsername}?startapp=${code}` : `シェアコード: ${code}`
+  const url = new URL('/', window.location.origin)
+  url.searchParams.set('startapp', code)
   try {
-    await navigator.clipboard.writeText(url)
+    await navigator.clipboard.writeText(url.href)
     showToast('リンクをコピーしました')
   } catch {
     showToast('コピーできませんでした')

@@ -1,35 +1,49 @@
 <template>
-  <div v-if="notInTelegram" class="tg-only" />
-  <RouterView v-else />
+  <div v-if="loading" class="login">読み込み中…</div>
+  <template v-else-if="user">
+    <div class="account"><span>{{ user.name || user.email }}</span><button @click="logout">ログアウト</button></div>
+    <p v-if="error" role="alert">{{ error }}</p>
+    <RouterView />
+  </template>
+  <main v-else class="login">
+    <h1>épicerie</h1>
+    <p>買い物リストを使うにはログインしてください。</p>
+    <p v-if="error" role="alert">{{ error }}</p>
+    <a :href="loginUrl">Googleでログイン</a>
+    <button v-if="error" @click="loadUser">再読み込み</button>
+  </main>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getWebApp, applyTheme } from './composables/useTelegram.js'
-import { api, hasValidStoredSession } from './composables/useApi.js'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { applyTheme, getWebApp, setMyUserId } from './composables/useTelegram.js'
+import { api } from './composables/useApi.js'
 
-const notInTelegram = ref(false)
-
-onMounted(async () => {
-  const tg = getWebApp()
-  if (!tg || tg.initData === undefined) {
-    notInTelegram.value = true
-    return
-  }
-
-  tg.ready()
-  tg.expand()
+const user = ref(null)
+const loading = ref(true)
+const error = ref(new URLSearchParams(location.search).has('auth_error') ? 'ログインできませんでした。もう一度お試しください。' : '')
+const returnUrl = new URL(location.href)
+returnUrl.searchParams.delete('auth_error')
+const loginUrl = '/api/auth/google?returnTo=' + encodeURIComponent(returnUrl.pathname + returnUrl.search)
+function clearUser() { user.value = null; setMyUserId(null) }
+async function loadUser() {
+  loading.value = true
+  try { user.value = await api.getMe(); setMyUserId(user.value.id); error.value = '' }
+  catch (e) { if (e.status !== 401) error.value = '接続できませんでした。再読み込みしてください。' }
+  finally { loading.value = false }
+}
+async function logout() {
+  try { await api.logout(); clearUser() }
+  catch { error.value = 'ログアウトできませんでした。もう一度お試しください。' }
+}
+onMounted(() => {
+  getWebApp()?.ready()
+  getWebApp()?.expand()
   applyTheme()
-
-  if (tg.initData || import.meta.env.DEV) {
-    // Normal launch or DEV: issue / refresh session token
-    try { await api.createSession() } catch {}
-  } else if (!hasValidStoredSession()) {
-    // No initData and no valid stored token → not accessible outside Telegram
-    notInTelegram.value = true
-  }
-  // else: initData gone but stored session is still valid → allow through
+  window.addEventListener('auth-required', clearUser)
+  loadUser()
 })
+onUnmounted(() => window.removeEventListener('auth-required', clearUser))
 </script>
 
 <style>
@@ -48,20 +62,11 @@ onMounted(async () => {
   --font-sans: 'DM Sans', -apple-system, 'Hiragino Koshi Gothic ProN', 'Hiragino Sans', sans-serif;
 }
 
-.tg-only {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100dvh;
-  gap: 16px;
-  color: #888;
-  font-size: 15px;
-  text-align: center;
-  padding: 24px;
-}
-
-.tg-only p { margin: 0; }
+.login { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; }
+.login h1 { font-family: var(--font-serif); font-size: 48px; margin: 0; }
+.login a { padding: 14px 24px; background: var(--tg-button); color: var(--tg-button-text); border-radius: var(--radius); text-decoration: none; }
+.account { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding: 10px 20px; font-size: 12px; }
+.account button { text-decoration: underline; }
 
 *, *::before, *::after {
   box-sizing: border-box;
