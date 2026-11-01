@@ -4,7 +4,7 @@ import App from './App.vue'
 import { api } from './composables/useApi.js'
 import { getMyUserId } from './composables/useTelegram.js'
 
-vi.mock('./composables/useApi.js', () => ({ api: { getMe: vi.fn(), logout: vi.fn(), loginTelegram: vi.fn() } }))
+vi.mock('./composables/useApi.js', () => ({ api: { getMe: vi.fn(), logout: vi.fn(), loginTelegram: vi.fn(), loginAgent: vi.fn() } }))
 let wrapper
 beforeEach(() => vi.clearAllMocks())
 afterEach(() => wrapper?.unmount())
@@ -13,6 +13,32 @@ function render() {
   return wrapper
 }
 describe('Login screen without Telegram', () => {
+  it('accepts ID/password login, clears the password and hides human settings for the agent', async () => {
+    api.getMe.mockRejectedValueOnce({ status: 401 }).mockResolvedValueOnce({ id: 123, name: 'Muse', provider: 'agent', permission: 'read' })
+    api.loginAgent.mockResolvedValue({ id: 123 })
+    render()
+    await flushPromises()
+    await wrapper.find('[name="username"]').setValue('muse-shopping')
+    await wrapper.find('[name="password"]').setValue('generated-password')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(api.loginAgent).toHaveBeenCalledWith('muse-shopping', 'generated-password')
+    expect(wrapper.find('[data-test="lists"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/settings/agents"]').exists()).toBe(false)
+    expect(wrapper.html()).not.toContain('generated-password')
+  })
+  it('shows failed password login without exposing the password', async () => {
+    api.getMe.mockRejectedValue({ status: 401 })
+    api.loginAgent.mockRejectedValue(new Error('IDまたはパスワードが正しくありません'))
+    render()
+    await flushPromises()
+    await wrapper.find('[name="username"]').setValue('muse-shopping')
+    await wrapper.find('[name="password"]').setValue('wrong-password')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').text()).toContain('正しくありません')
+    expect(wrapper.find('[name="password"]').element.value).toBe('')
+  })
   it('shows Google login and hides the app for a visitor', async () => {
     api.getMe.mockRejectedValue({ status: 401 })
     render()
@@ -47,6 +73,6 @@ describe('Login screen without Telegram', () => {
     render()
     await flushPromises()
     expect(wrapper.find('[role="alert"]').text()).toContain('接続できませんでした')
-    expect(wrapper.find('button').text()).toBe('再読み込み')
+    expect(wrapper.findAll('button').map(button => button.text())).toContain('再読み込み')
   })
 })

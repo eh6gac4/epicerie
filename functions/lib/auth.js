@@ -1,3 +1,4 @@
+import { authenticateAgentSession, verifyAgentLogin } from './agentAccounts.js'
 import { Hono } from 'hono'
 import { signSession, verifySession, validateInitData } from './telegramAuth.js'
 import { getSignedCookie, setSignedCookie, deleteCookie } from 'hono/cookie'
@@ -42,6 +43,7 @@ export async function requireUser(c, next) {
     }
   }
   const session = await readCookie(c, SESSION)
+  if (session?.provider === 'agent') return authenticateAgentSession(c, session, next)
   let user = null
   if (Number.isSafeInteger(session?.userId)) {
     user = session.provider === 'telegram' && session.userId > 0
@@ -58,6 +60,17 @@ export async function requireUser(c, next) {
 auth.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
   return next()
+})
+
+auth.post('/password', async (c) => {
+  if (!sessionSecret(c) || sessionSecret(c).length < 32) return c.json({ error: 'Session signing is not configured' }, 503)
+  const origin = new URL(c.env.APP_ORIGIN || c.req.url).origin
+  if (c.req.header('Sec-Fetch-Site') === 'cross-site' || (c.req.header('Origin') && c.req.header('Origin') !== origin)) return c.json({ error: 'Invalid origin' }, 403)
+  const result = await verifyAgentLogin(c)
+  if (result.error) return c.json({ error: result.error }, result.status)
+  const expiresAt = Math.min(Date.now() + DURATION * 1000, result.account.expires_at)
+  await setSignedCookie(c, SESSION, JSON.stringify({ provider: 'agent', agentId: result.account.id, expiresAt }), sessionSecret(c), options(c, Math.floor((expiresAt - Date.now()) / 1000)))
+  return c.json(result.user)
 })
 
 // Exchange Telegram launch data or an existing legacy session for an HttpOnly cookie.

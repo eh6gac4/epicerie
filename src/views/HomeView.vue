@@ -5,7 +5,7 @@
         <div class="brand-name">Épicerie</div>
         <div class="brand-sub">買い物リスト</div>
       </div>
-      <button class="new-btn" @click="openCreate" aria-label="新しいリストを作成">
+      <button v-if="!isAgent" class="new-btn" @click="openCreate" aria-label="新しいリストを作成">
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
           <path d="M6.5 1v11M1 6.5h11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
@@ -29,7 +29,7 @@
           <path d="M54 49v10M49 54h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
         <p class="state-title">リストがありません</p>
-        <p class="state-sub">「＋」から最初のリストを作りましょう</p>
+        <p class="state-sub">{{ isAgent ? '利用できるリストはありません' : '「＋」から最初のリストを作りましょう' }}</p>
       </div>
 
       <div v-else class="cards">
@@ -167,13 +167,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { inject, ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../composables/useApi.js'
 import { getWebApp, getMyUserId } from '../composables/useTelegram.js'
 import { useListActions } from '../composables/useListActions.js'
 import ListCard from '../components/ListCard.vue'
 
+const currentUser = inject('currentUser', ref(null))
+const isAgent = computed(() => currentUser.value?.provider === 'agent')
 const router = useRouter()
 const listActions = useListActions()
 const myUserId = getMyUserId()
@@ -199,6 +201,7 @@ function goToList(list) {
 }
 
 function openListMenu(list) {
+  if (isAgent.value) return
   menuList.value = list
 }
 
@@ -317,6 +320,7 @@ function showToast(msg, ms = 2500) {
 }
 
 async function handleStartParam() {
+  if (isAgent.value) return
   const tg = getWebApp()
   const code = new URLSearchParams(location.search).get('startapp') || tg?.initDataUnsafe?.start_param
   if (!code) return

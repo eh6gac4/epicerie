@@ -1,7 +1,7 @@
 <template>
   <div v-if="loading" class="login">読み込み中…</div>
   <template v-else-if="user">
-    <div class="account"><span>{{ user.name || user.email }}</span><button @click="logout">ログアウト</button></div>
+    <div class="account"><span>{{ user.name || user.email }}</span><a v-if="user.provider !== 'agent'" href="/settings/agents">エージェント設定</a><button @click="logout">ログアウト</button></div>
     <p v-if="error" role="alert">{{ error }}</p>
     <RouterView />
   </template>
@@ -9,17 +9,28 @@
     <h1>épicerie</h1>
     <p>買い物リストを使うにはログインしてください。</p>
     <p v-if="error" role="alert">{{ error }}</p>
+    <form @submit.prevent="loginPassword" class="password-login">
+      <label for="login-id">ログインID</label>
+      <input id="login-id" v-model="loginId" name="username" autocomplete="username" required maxlength="64" />
+      <label for="login-password">パスワード</label>
+      <input id="login-password" v-model="password" name="password" type="password" autocomplete="current-password" required maxlength="128" />
+      <button type="submit" :disabled="signingIn">{{ signingIn ? 'ログイン中…' : 'ID・パスワードでログイン' }}</button>
+    </form>
     <a :href="loginUrl">Googleでログイン</a>
     <button v-if="error" @click="loadUser">再読み込み</button>
   </main>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, provide, onMounted, onUnmounted } from 'vue'
 import { applyTheme, getWebApp, setMyUserId } from './composables/useTelegram.js'
 import { api } from './composables/useApi.js'
 
 const user = ref(null)
+provide('currentUser', user)
+const loginId = ref('')
+const password = ref('')
+const signingIn = ref(false)
 const loading = ref(true)
 const error = ref(new URLSearchParams(location.search).has('auth_error') ? 'ログインできませんでした。もう一度お試しください。' : '')
 const returnUrl = new URL(location.href)
@@ -31,6 +42,14 @@ async function loadUser() {
   try { user.value = await api.getMe(); setMyUserId(user.value.id); error.value = '' }
   catch (e) { if (e.status !== 401) error.value = '接続できませんでした。再読み込みしてください。' }
   finally { loading.value = false }
+}
+async function loginPassword() {
+  if (signingIn.value) return
+  signingIn.value = true
+  error.value = ''
+  try { await api.loginAgent(loginId.value, password.value); password.value = ''; await loadUser() }
+  catch (e) { error.value = e.message; password.value = '' }
+  finally { signingIn.value = false }
 }
 async function logout() {
   try { await api.logout(); clearUser() }
@@ -64,6 +83,10 @@ onUnmounted(() => window.removeEventListener('auth-required', clearUser))
 }
 
 .login { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; }
+.password-login { display: grid; gap: 10px; width: min(100%, 320px); text-align: left; }
+.password-login input { width: 100%; font: inherit; color: var(--tg-text); background: var(--tg-bg); border: 1px solid var(--tg-hint); border-radius: 8px; padding: 12px; }
+.password-login button { padding: 14px; background: var(--tg-button); color: var(--tg-button-text); border-radius: var(--radius); }
+.password-login button:disabled { opacity: .5; }
 .login h1 { font-family: var(--font-serif); font-size: 48px; margin: 0; }
 .login a { padding: 14px 24px; background: var(--tg-button); color: var(--tg-button-text); border-radius: var(--radius); text-decoration: none; }
 .account { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding: 10px 20px; font-size: 12px; }

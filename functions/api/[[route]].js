@@ -1,3 +1,4 @@
+import { agentAccounts } from '../lib/agentAccounts.js'
 import { auth, requireUser } from '../lib/auth.js'
 import { Hono } from 'hono'
 import { Buffer } from 'node:buffer'
@@ -8,10 +9,13 @@ const app = new Hono().basePath('/api')
 
 app.route('/auth', auth)
 app.use('*', requireUser)
+app.route('/agent-accounts', agentAccounts)
 
 // GET /api/lists — アクティブ・アーカイブ済み両方を含めて返す（lm.archived_at で判別）
 app.get('/lists', async (c) => {
   const userId = c.get('userId')
+  const allowedIds = c.get('agent')?.listIds
+  const listFilter = allowedIds ? `AND l.id IN (${allowedIds.map(() => '?').join(',')})` : ''
   const { results } = await c.env.DB.prepare(`
     SELECT l.id, l.name, l.share_code, l.created_by, lm.archived_at,
            COUNT(i.id) AS item_count,
@@ -19,11 +23,11 @@ app.get('/lists', async (c) => {
     FROM lists l
     JOIN list_members lm ON l.id = lm.list_id
     LEFT JOIN items i ON l.id = i.list_id
-    WHERE lm.tg_user_id = ?
+    WHERE lm.tg_user_id = ? ${listFilter}
     GROUP BY l.id
     ORDER BY lm.archived_at IS NOT NULL ASC, l.created_at DESC
-  `).bind(userId).all()
-  return c.json(results)
+  `).bind(userId, ...(allowedIds || [])).all()
+  return c.json(allowedIds ? results.map(({ share_code, ...list }) => list) : results)
 })
 
 // POST /api/lists/:id/archive
@@ -120,6 +124,7 @@ app.get('/lists/:id', async (c) => {
 
   const list = await c.env.DB.prepare('SELECT id, name, share_code, created_by FROM lists WHERE id = ?')
     .bind(listId).first()
+  if (c.get('agent')) { const { share_code, ...visible } = list; return c.json(visible) }
   return c.json(list)
 })
 
@@ -476,6 +481,8 @@ async function logUserAction(c, action, listId = null, itemId = null, details = 
     const userId = c.get('userId')
     const id = crypto.randomUUID()
     const now = Date.now()
+    const agent = c.get('agent')
+    if (agent) details = { ...details, agent: { id: agent.id, name: agent.name } }
     const stmt = c.env.DB.prepare(
       'INSERT INTO user_logs (id, tg_user_id, action, list_id, item_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).bind(id, userId, action, listId, itemId, details ? JSON.stringify(details) : null, now)

@@ -19,6 +19,10 @@ async function request(method, path, body, extraHeaders = {}) {
 }
 
 export const api = {
+  loginAgent: (loginId, password) => request('POST', '/api/auth/password', { loginId, password }),
+  getAgentAccounts: () => request('GET', '/api/agent-accounts'),
+  createAgentAccount: (data) => request('POST', '/api/agent-accounts', data),
+  revokeAgentAccount: (id) => request('DELETE', `/api/agent-accounts/${id}`),
   getMe: () => request('GET', '/api/auth/me'),
   async loginTelegram() {
     let token

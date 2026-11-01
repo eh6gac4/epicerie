@@ -11,6 +11,7 @@ database_id = "df6ec9f6-01a4-4f57-a5cb-834f25e179e1"
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "grocery-list-attachments"
+# Set AGENT_PASSWORD_PEPPER for agent ID/password login.
 # Keep TELEGRAM_BOT_TOKEN for Telegram Mini App authentication.
 # Configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET and APP_ORIGIN
 # in Cloudflare Pages secrets / environment variables. See README.md.
