@@ -13,6 +13,21 @@ function render() {
   return wrapper
 }
 describe('Login screen without Telegram', () => {
+  it('logs family into the normal app without exposing Telegram account management', async () => {
+    api.getMe.mockRejectedValueOnce({ status: 401 }).mockResolvedValueOnce({ id: 0, accountId: 'family-id', name: 'Family', provider: 'family', shared: true })
+    api.loginAgent.mockResolvedValue({ id: 0 })
+    render()
+    await flushPromises()
+    await wrapper.find('[name="username"]').setValue('family-browser')
+    await wrapper.find('[name="password"]').setValue('family-password')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('[data-test="lists"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/settings/accounts"]').exists()).toBe(false)
+    expect(getMyUserId()).toBe(0)
+    expect(wrapper.text()).toContain('Family')
+  })
+
   it('accepts ID/password login, clears the password and hides human settings for the agent', async () => {
     api.getMe.mockRejectedValueOnce({ status: 401 }).mockResolvedValueOnce({ id: 123, name: 'Muse', provider: 'agent', permission: 'read' })
     api.loginAgent.mockResolvedValue({ id: 123 })
@@ -24,7 +39,7 @@ describe('Login screen without Telegram', () => {
     await flushPromises()
     expect(api.loginAgent).toHaveBeenCalledWith('muse-shopping', 'generated-password')
     expect(wrapper.find('[data-test="lists"]').exists()).toBe(true)
-    expect(wrapper.find('a[href="/settings/agents"]').exists()).toBe(false)
+    expect(wrapper.find('a[href="/settings/accounts"]').exists()).toBe(false)
     expect(wrapper.html()).not.toContain('generated-password')
   })
   it('shows failed password login without exposing the password', async () => {

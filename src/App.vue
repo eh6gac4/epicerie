@@ -1,7 +1,7 @@
 <template>
   <div v-if="loading" class="login">読み込み中…</div>
   <template v-else-if="user">
-    <div class="account"><span>{{ user.name || user.email }}</span><a v-if="user.provider !== 'agent'" href="/settings/agents">エージェント設定</a><button @click="logout">ログアウト</button></div>
+    <div class="account"><span>{{ user.name || user.email }}</span><a v-if="user.provider === 'telegram'" href="/settings/accounts">アカウント管理</a><button @click="logout">ログアウト</button></div>
     <p v-if="error" role="alert">{{ error }}</p>
     <RouterView />
   </template>

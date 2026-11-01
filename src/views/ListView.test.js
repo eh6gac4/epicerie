@@ -387,3 +387,17 @@ describe('ListView.vue - Shared household management', () => {
     wrapper.unmount()
   })
 })
+
+
+describe('ListView.vue - Family password account', () => {
+  it('offers ordinary list and item operations for a family member', async () => {
+    const wrapper = mount(ListView, { global: { stubs: { teleport: true }, provide: { currentUser: { value: { provider: 'family', shared: true } } } } })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(wrapper.find('.add-input').exists()).toBe(true)
+    expect(wrapper.find('.fav-list-btn').exists()).toBe(true)
+    expect(wrapper.find('.upload-btn').exists()).toBe(true)
+    await wrapper.find('.menu-btn').trigger('click')
+    expect(wrapper.findAll('.sheet-btn').map(button => button.text())).toContain('削除する')
+    wrapper.unmount()
+  })
+})

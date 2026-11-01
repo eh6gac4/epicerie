@@ -1,20 +1,30 @@
 import { Hono } from 'hono'
+import { SHARED_USER_ID } from './sharedWorkspace.js'
 
 export const agentAccounts = new Hono()
 const DAY = 86_400_000
 const PERMISSIONS = ['read', 'items:write']
 const LOGIN_ID = /^[a-z0-9][a-z0-9._-]{2,63}$/
+const ACCOUNT_FROM = 'FROM agent_accounts a LEFT JOIN family_accounts f ON f.account_id = a.id'
+const ACCOUNT_TYPE = "CASE WHEN f.account_id IS NULL THEN 'agent' ELSE 'family' END AS account_type"
+const ACCOUNT_SELECT = `SELECT a.*, ${ACCOUNT_TYPE} ${ACCOUNT_FROM}`
 const encoder = new TextEncoder()
 const hex = bytes => Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 const unhex = value => Uint8Array.from(value.match(/../g) || [], byte => parseInt(byte, 16))
 function passwordConfigured(c) { return c.env.AGENT_PASSWORD_PEPPER?.length >= 32 }
 function metadata(row) {
-  return { id: row.id, name: row.name, loginId: row.login_id, permission: row.permission,
-    listIds: JSON.parse(row.list_ids), createdAt: row.created_at, expiresAt: row.expires_at,
+  return { id: row.id, name: row.name, loginId: row.login_id, accountType: row.account_type || 'agent', permission: row.permission,
+    listIds: JSON.parse(row.list_ids), createdAt: row.created_at, expiresAt: row.account_type === 'family' ? null : row.expires_at,
     lastUsedAt: row.last_used_at, revokedAt: row.revoked_at }
 }
 function agentUser(row) {
+  if (row.account_type === 'family') return { id: row.user_id, accountId: row.id, name: row.name, provider: 'family', shared: true }
   return { id: row.user_id, name: row.name, provider: 'agent', agentId: row.id, permission: row.permission }
+}
+function activeAccount(c, row) {
+  if (!row || row.revoked_at !== null || !Number.isSafeInteger(row.user_id)) return false
+  if (row.account_type === 'family') return c.env.SHARED_DATA_MODE === 'true' && row.user_id === SHARED_USER_ID
+  return row.account_type === 'agent' && PERMISSIONS.includes(row.permission) && row.expires_at > Date.now()
 }
 async function passwordHash(password, salt, pepper) {
   // Workers limits PBKDF2 to 100,000 iterations. Passwords are random 192-bit values;
@@ -30,12 +40,12 @@ async function sha256(value) {
 
 agentAccounts.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
-  if (c.get('agent')) return c.json({ error: 'Human login required' }, 403)
+  if (c.get('user')?.provider !== 'telegram') return c.json({ error: 'Telegramからアカウント管理を開いてください' }, 403)
   return next()
 })
 agentAccounts.get('/', async (c) => {
-  const { results } = await c.env.DB.prepare(`SELECT id, name, login_id, permission, list_ids,
-    created_at, expires_at, last_used_at, revoked_at FROM agent_accounts WHERE user_id = ? ORDER BY created_at DESC`)
+  const { results } = await c.env.DB.prepare(`SELECT a.id, a.name, a.login_id, a.permission, a.list_ids,
+    a.created_at, a.expires_at, a.last_used_at, a.revoked_at, ${ACCOUNT_TYPE} ${ACCOUNT_FROM} WHERE a.user_id = ? ORDER BY a.created_at DESC`)
     .bind(c.get('userId')).all()
   return c.json(results.map(metadata))
 })
@@ -43,14 +53,18 @@ agentAccounts.post('/', async (c) => {
   if (!passwordConfigured(c)) return c.json({ error: 'AGENT_PASSWORD_PEPPER must be configured' }, 503)
   let body
   try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON' }, 400) }
-  const { name, loginId, permission, listIds, expiresInDays = 30 } = body || {}
+  const { name, loginId, accountType = 'agent', expiresInDays = 30 } = body || {}
+  const family = accountType === 'family'
+  const permission = family ? 'items:write' : body?.permission
+  const listIds = family ? [] : body?.listIds
   const normalizedId = typeof loginId === 'string' ? loginId.trim().toLowerCase() : ''
-  if (typeof name !== 'string' || !name.trim() || name.trim().length > 80 || !LOGIN_ID.test(normalizedId) ||
-      !PERMISSIONS.includes(permission) || !Array.isArray(listIds) || !listIds.length || listIds.length > 20 ||
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 80 || !LOGIN_ID.test(normalizedId) || !['family', 'agent'].includes(accountType) ||
+      !PERMISSIONS.includes(permission) || !Array.isArray(listIds) || (!family && !listIds.length) || listIds.length > 20 ||
       listIds.some(id => typeof id !== 'string' || !id || id.length > 128) ||
-      !Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 90) {
+      (!family && (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 90))) {
     return c.json({ error: '名前、ログインID（英数字等3〜64文字）、対象リスト、権限、有効期限（1〜90日）を確認してください' }, 400)
   }
+  if (family && (c.env.SHARED_DATA_MODE !== 'true' || c.get('userId') !== SHARED_USER_ID)) return c.json({ error: '家族用アカウントには共有モードが必要です' }, 400)
   const ids = [...new Set(listIds)]
   const userId = c.get('userId')
   for (const listId of ids) {
@@ -65,14 +79,18 @@ agentAccounts.post('/', async (c) => {
   const salt = hex(crypto.getRandomValues(new Uint8Array(16)))
   const now = Date.now()
   const row = { id: crypto.randomUUID(), name: name.trim(), login_id: normalizedId,
-    permission, list_ids: JSON.stringify(ids), created_at: now, expires_at: now + expiresInDays * DAY,
+    account_type: accountType, permission, list_ids: JSON.stringify(ids), created_at: now, expires_at: family ? 0 : now + expiresInDays * DAY,
     last_used_at: null, revoked_at: null }
   const hash = hex(await passwordHash(password, salt, c.env.AGENT_PASSWORD_PEPPER))
   // The unique login_id index also handles concurrent creation attempts.
-  const result = await c.env.DB.prepare(`INSERT INTO agent_accounts
+  const insert = c.env.DB.prepare(`INSERT INTO agent_accounts
     (id, user_id, name, login_id, password_hash, password_salt, permission, list_ids, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(login_id) DO NOTHING RETURNING id`)
-    .bind(row.id, userId, row.name, normalizedId, hash, salt, permission, row.list_ids, now, row.expires_at).first()
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(login_id) DO NOTHING`)
+    .bind(row.id, userId, row.name, normalizedId, hash, salt, permission, row.list_ids, now, row.expires_at)
+  const writes = [insert]
+  if (family) writes.push(c.env.DB.prepare('INSERT INTO family_accounts (account_id) SELECT id FROM agent_accounts WHERE id = ?').bind(row.id))
+  await c.env.DB.batch(writes)
+  const result = await c.env.DB.prepare('SELECT id FROM agent_accounts WHERE id = ?').bind(row.id).first()
   if (!result) return c.json({ error: 'このログインIDは使用されています' }, 409)
   return c.json({ ...metadata(row), password }, 201)
 })
@@ -104,12 +122,12 @@ export async function verifyAgentLogin(c) {
       return { error: '試行回数が多すぎます。15分後にお試しください', status: 429 }
     }
   }
-  const row = await c.env.DB.prepare('SELECT * FROM agent_accounts WHERE login_id = ?').bind(loginId).first()
+  const row = await c.env.DB.prepare(`${ACCOUNT_SELECT} WHERE a.login_id = ?`).bind(loginId).first()
   const hash = await passwordHash(password, row?.password_salt || '0'.repeat(32), c.env.AGENT_PASSWORD_PEPPER)
   const expected = unhex(row?.password_hash || '0'.repeat(64))
   let different = hash.length ^ expected.length
   for (let i = 0; i < hash.length; i++) different |= hash[i] ^ (expected[i] || 0)
-  if (different || !row || row.revoked_at !== null || row.expires_at <= now) return invalid
+  if (different || !activeAccount(c, row)) return invalid
   return { account: row, user: agentUser(row) }
 }
 // Explicit allowlist: new API endpoints do not automatically become agent-accessible.
@@ -138,9 +156,15 @@ async function allowedList(c, agent) {
 }
 
 export async function authenticateAgentSession(c, session, next) {
-  const row = await c.env.DB.prepare('SELECT * FROM agent_accounts WHERE id = ? AND revoked_at IS NULL AND expires_at > ?')
-    .bind(session.agentId, Date.now()).first()
-  if (!row || !Number.isSafeInteger(row.user_id) || !PERMISSIONS.includes(row.permission)) return c.json({ error: 'Unauthorized' }, 401)
+  const row = await c.env.DB.prepare(`${ACCOUNT_SELECT} WHERE a.id = ?`)
+    .bind(session.agentId).first()
+  if (!activeAccount(c, row)) return c.json({ error: 'Unauthorized' }, 401)
+  if (row.account_type === 'family') {
+    c.set('userId', row.user_id)
+    c.set('user', agentUser(row))
+    await c.env.DB.prepare('UPDATE agent_accounts SET last_used_at = ? WHERE id = ?').bind(Date.now(), row.id).run()
+    return next()
+  }
   let agent
   try {
     const listIds = JSON.parse(row.list_ids)

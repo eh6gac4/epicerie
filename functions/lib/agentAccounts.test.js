@@ -50,7 +50,7 @@ beforeEach(async () => {
     INSERT INTO list_members(list_id,tg_user_id,joined_at) VALUES ('list-a',101,1),('list-b',101,1),('foreign',202,1);
     INSERT INTO items(id,list_id,name,added_by,created_at,updated_at) VALUES ('item-a','list-a','Milk',101,1,1),('item-b','list-b','Secret',101,1,1);
     INSERT INTO item_attachments VALUES ('att-a','item-a','a.png','image/png','key-a',1),('att-b','item-b','b.png','image/png','key-b',1);`)
-  env = { DB: d1(sqlite), SESSION_SECRET: 's'.repeat(64), AGENT_PASSWORD_PEPPER: 'p'.repeat(64), APP_ORIGIN: 'https://shop.example', GOOGLE_ALLOWED_EMAILS: 'owner@example.com,other@example.com',
+  env = { DB: d1(sqlite), SESSION_SECRET: 's'.repeat(64), AGENT_PASSWORD_PEPPER: 'p'.repeat(64), APP_ORIGIN: 'https://shop.example',
     BUCKET: { async delete() {}, async get() { return { body: 'image', httpEtag: 'etag', writeHttpMetadata(headers) { headers.set('Content-Type', 'image/png') } } } } }
   ownerCookie = (await generateSignedCookie('epicerie_session', JSON.stringify({ provider: 'telegram', userId: 101, expiresAt: Date.now() + 60_000 }), env.SESSION_SECRET)).split(';')[0]
   otherCookie = (await generateSignedCookie('epicerie_session', JSON.stringify({ provider: 'telegram', userId: 202, expiresAt: Date.now() + 60_000 }), env.SESSION_SECRET)).split(';')[0]
@@ -116,7 +116,7 @@ describe('ID/password agent accounts', () => {
     for (const [path, method] of [
       ['/items/item-a', 'DELETE'], ['/lists/list-a', 'DELETE'], ['/lists/list-a', 'PATCH'], ['/lists/list-a/archive', 'POST'],
       ['/lists', 'POST'], ['/lists/join', 'POST'], ['/favorites', 'GET'], ['/agent-accounts', 'GET'],
-      ['/agent-accounts', 'POST'], ['/agent-accounts/' + account.id, 'DELETE'], ['/auth/session', 'POST'], ['/auth/telegram', 'POST'],
+      ['/agent-accounts', 'POST'], ['/agent-accounts/' + account.id, 'DELETE'], ['/auth/session', 'POST'],
       ['/lists/list-a/upload', 'POST'], ['/lists/list-a/recategorize', 'POST'],
     ]) expect((await call(path, { method, cookie, ...(method === 'POST' ? { body: {} } : {}) })).status, path).toBe(403)
     expect((await call('/items/item-b', { method: 'PATCH', cookie, body: { name: 'intrusion' } })).status).toBe(403)
@@ -244,5 +244,86 @@ describe('Shared household data with separate identities', () => {
     expect((await (await call('/agent-accounts', { cookie: otherCookie })).json())[0].id).toBe(account.id)
     await call('/agent-accounts/' + account.id, { method: 'DELETE', cookie: otherCookie })
     expect((await call('/auth/me', { cookie })).status).toBe(401)
+  })
+})
+
+
+describe('Family password accounts issued from Telegram', () => {
+  it('issues a family account without list selection or expiry and allows ordinary shared-data operations', async () => {
+    prepareSharedData()
+    const { response, account } = await create({ name: 'Family', loginId: 'family-browser', accountType: 'family' })
+    expect(response.status).toBe(201)
+    expect(account).toMatchObject({ accountType: 'family', listIds: [], expiresAt: null })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM family_accounts').get().n).toBe(1)
+    const { response: signedIn, cookie } = await login(account)
+    expect(signedIn.status).toBe(200)
+    expect(signedIn.headers.get('set-cookie')).toContain('Max-Age=')
+    expect(await (await call('/auth/me', { cookie })).json()).toMatchObject({ provider: 'family', id: 0, accountId: account.id, shared: true })
+    expect((await (await call('/lists', { cookie })).json()).length).toBe(3)
+    expect((await (await call('/favorites', { cookie })).json()).length).toBe(2)
+    const created = await (await call('/lists', { method: 'POST', cookie, body: { name: 'Family created' } })).json()
+    expect(created.created_by).toBe(0)
+    expect((await call('/lists/' + created.id, { method: 'PATCH', cookie, body: { name: 'Renamed by family' } })).status).toBe(200)
+    const item = await (await call('/lists/' + created.id + '/items', { method: 'POST', cookie, body: { name: 'Milk', category: 'Other' } })).json()
+    expect((await call('/items/' + item.id, { method: 'PATCH', cookie, body: { checked: true } })).status).toBe(200)
+    expect((await call('/items/' + item.id, { method: 'DELETE', cookie })).status).toBe(200)
+    expect((await call('/lists/' + created.id, { method: 'DELETE', cookie })).status).toBe(200)
+    const details = JSON.parse(sqlite.prepare("SELECT details FROM user_logs WHERE action='CREATE_LIST'").get().details)
+    expect(details.actor).toEqual({ provider: 'family', id: account.id, name: 'Family' })
+    expect(details).not.toHaveProperty('agent')
+  })
+  it('does not allow family browser sessions to issue, list or revoke accounts', async () => {
+    prepareSharedData()
+    const { account } = await create({ accountType: 'family' })
+    const { cookie } = await login(account)
+    for (const path of ['/accounts','/agent-accounts']) {
+      expect((await call(path, { cookie })).status).toBe(403)
+      expect((await call(path, { method: 'POST', cookie, body: { name: 'Intrusion', loginId: 'new-family', accountType: 'family' } })).status).toBe(403)
+      expect((await call(path + '/' + account.id, { method: 'DELETE', cookie })).status).toBe(403)
+    }
+    expect((await call('/auth/session', { method: 'POST', cookie })).status).toBe(401)
+    expect((await call('/auth/telegram', { method: 'POST', cookie })).status).toBe(401)
+  })
+  it('returns from family login to Telegram management only with valid enrolled launch credentials', async () => {
+    prepareSharedData()
+    const { account } = await create({ accountType: 'family' })
+    const { cookie } = await login(account)
+    expect((await call('/auth/telegram', { method: 'POST', cookie })).status).toBe(401)
+    expect((await call('/auth/telegram', { method: 'POST', cookie, headers: telegramHeaders(303) })).status).toBe(401)
+    const upgraded = await call('/auth/telegram', { method: 'POST', cookie, headers: telegramHeaders(101) })
+    expect(upgraded.status).toBe(200)
+    expect(await upgraded.json()).toMatchObject({ provider: 'telegram', accountId: 101 })
+    const telegramCookie = upgraded.headers.get('set-cookie').split(';')[0]
+    expect((await call('/accounts', { cookie: telegramCookie })).status).toBe(200)
+    expect((await call('/auth/telegram', { method: 'POST', cookie, headers: { ...telegramHeaders(101), Origin: 'https://evil.example' } })).status).toBe(403)
+  })
+  it('stops active family browser sessions immediately after Telegram revocation', async () => {
+    prepareSharedData()
+    const { account } = await create({ accountType: 'family' })
+    const { cookie } = await login(account)
+    expect((await call('/accounts/' + account.id, { method: 'DELETE', cookie: otherCookie })).status).toBe(200)
+    expect((await call('/auth/me', { cookie })).status).toBe(401)
+    expect((await login(account)).response.status).toBe(401)
+  })
+  it('does not convert existing agents into family members or trust a login role supplied by the caller', async () => {
+    prepareSharedData()
+    const { account } = await create()
+    expect(account.accountType).toBe('agent')
+    const signedIn = await call('/auth/password', { method: 'POST', body: { loginId: account.loginId, password: account.password, accountType: 'family' } })
+    const cookie = signedIn.headers.get('set-cookie').split(';')[0]
+    expect(await signedIn.json()).toMatchObject({ provider: 'agent' })
+    expect((await call('/lists', { method: 'POST', cookie, body: { name: 'Forbidden' } })).status).toBe(403)
+    expect((await create({ accountType: 'family' })).response.status).toBe(409)
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM family_accounts').get().n).toBe(0)
+    sqlite.prepare('UPDATE agent_accounts SET expires_at=0 WHERE id=?').run(account.id)
+    expect((await login(account)).response.status).toBe(401)
+  })
+  it('requires shared household mode and rejects unknown account types', async () => {
+    expect((await create({ accountType: 'family' })).response.status).toBe(400)
+    expect((await create({ accountType: 'admin' })).response.status).toBe(400)
+    prepareSharedData()
+    const { account } = await create({ accountType: 'family' })
+    env.SHARED_DATA_MODE = 'false'
+    expect((await login(account)).response.status).toBe(401)
   })
 })

@@ -12,6 +12,10 @@ function sessionSecret(c) { return c.env.SESSION_SECRET || c.env.TELEGRAM_BOT_TO
 function options(c, maxAge) {
   return { httpOnly: true, secure: new URL(c.env.APP_ORIGIN || c.req.url).protocol === 'https:', sameSite: 'Lax', path: '/', maxAge }
 }
+function sameOrigin(c) {
+  const origin = new URL(c.env.APP_ORIGIN || c.req.url).origin
+  return c.req.header('Sec-Fetch-Site') !== 'cross-site' && (!c.req.header('Origin') || c.req.header('Origin') === origin)
+}
 async function readCookie(c, name) {
   try {
     const value = await getSignedCookie(c, sessionSecret(c), name)
@@ -23,19 +27,13 @@ async function telegramUser(c) {
   if (!c.env.TELEGRAM_BOT_TOKEN) return null
   const token = c.req.header('X-Session-Token') || c.req.query('session_token')
   const initData = c.req.header('X-Telegram-Init-Data') || c.req.query('init_data')
-  let result = token ? await verifySession(token, c.env.TELEGRAM_BOT_TOKEN) : null
-  if (!result?.valid && initData) result = await validateInitData(initData, c.env.TELEGRAM_BOT_TOKEN)
+  let result = initData ? await validateInitData(initData, c.env.TELEGRAM_BOT_TOKEN) : null
+  if (!result?.valid && token) result = await verifySession(token, c.env.TELEGRAM_BOT_TOKEN)
   return result?.valid ? { id: result.userId, name: result.name || 'Telegram', provider: 'telegram' } : null
 }
 export async function requireUser(c, next) {
   c.header('Cache-Control', 'no-store')
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
-    const origin = new URL(c.env.APP_ORIGIN || c.req.url).origin
-    if (c.req.header('Sec-Fetch-Site') === 'cross-site' ||
-        (c.req.header('Origin') && c.req.header('Origin') !== origin)) {
-      return c.json({ error: 'Invalid origin' }, 403)
-    }
-  }
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && !sameOrigin(c)) return c.json({ error: 'Invalid origin' }, 403)
   const session = await readCookie(c, SESSION)
   if (session?.provider === 'agent') return authenticateAgentSession(c, session, next)
   let user = null
@@ -59,19 +57,20 @@ auth.use('*', async (c, next) => {
 
 auth.post('/password', async (c) => {
   if (!sessionSecret(c) || sessionSecret(c).length < 32) return c.json({ error: 'Session signing is not configured' }, 503)
-  const origin = new URL(c.env.APP_ORIGIN || c.req.url).origin
-  if (c.req.header('Sec-Fetch-Site') === 'cross-site' || (c.req.header('Origin') && c.req.header('Origin') !== origin)) return c.json({ error: 'Invalid origin' }, 403)
+  if (!sameOrigin(c)) return c.json({ error: 'Invalid origin' }, 403)
   const result = await verifyAgentLogin(c)
   if (result.error) return c.json({ error: result.error }, result.status)
-  const expiresAt = Math.min(Date.now() + DURATION * 1000, result.account.expires_at)
+  const expiresAt = result.account.account_type === 'family' ? Date.now() + DURATION * 1000 : Math.min(Date.now() + DURATION * 1000, result.account.expires_at)
   await setSignedCookie(c, SESSION, JSON.stringify({ provider: 'agent', agentId: result.account.id, expiresAt }), sessionSecret(c), options(c, Math.floor((expiresAt - Date.now()) / 1000)))
   return c.json(result.user)
 })
 
 // Exchange Telegram launch data or an existing legacy session for an HttpOnly cookie.
-auth.post('/telegram', requireUser, async (c) => {
-  const user = c.get('user')
-  if (user.provider !== 'telegram' || !sessionSecret(c)) return c.json({ error: 'Telegram authentication required' }, 401)
+auth.post('/telegram', async (c) => {
+  if (!sameOrigin(c)) return c.json({ error: 'Invalid origin' }, 403)
+  const account = await telegramUser(c)
+  const user = account && await dataUser(c, account)
+  if (!user || !sessionSecret(c)) return c.json({ error: 'Telegram authentication required' }, 401)
   await setSignedCookie(c, SESSION, JSON.stringify({ userId: user.accountId ?? user.id, name: user.name, provider: 'telegram', expiresAt: Date.now() + DURATION * 1000 }), sessionSecret(c), options(c, DURATION))
   return c.json(user)
 })
