@@ -29,11 +29,13 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+      - name: Migrate database and deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: grocery-list
-          directory: dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          command: |
+            d1 execute grocery-list-db --remote --file=migrate_google_auth.sql
+            d1 execute grocery-list-db --remote --file=migrate_agent_accounts.sql
+            pages deploy dist --project-name=grocery-list

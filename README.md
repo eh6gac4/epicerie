@@ -37,7 +37,9 @@ Googleと併用する際は `SESSION_SECRET` を設定する。未設定時はTe
 
 ## デプロイ
 
-アプリのデプロイ前に新しいテーブルを適用する。既存テーブルは変更しない。
+mainへのマージ後、GitHub Actionsがビルド、追加テーブルの移行、Cloudflare Pagesへの公開を順に実行する。移行に失敗した場合は公開を停止する。
+既存の `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を使用する。APIトークンにはPages編集権限と対象D1データベースの編集権限が必要。
+手動で公開する場合は、アプリのデプロイ前に以下を実行する。既存テーブルは変更しない。
 
 ```sh
 npx wrangler d1 execute grocery-list-db --remote --file=migrate_google_auth.sql
