@@ -1,3 +1,4 @@
+import { dataUser } from './sharedWorkspace.js'
 import { authenticateAgentSession, verifyAgentLogin } from './agentAccounts.js'
 import { Hono } from 'hono'
 import { signSession, verifySession, validateInitData } from './telegramAuth.js'
@@ -10,6 +11,15 @@ const DURATION = 30 * 24 * 60 * 60
 
 function configured(c) {
   return c.env.SESSION_SECRET?.length >= 32 && c.env.APP_ORIGIN
+}
+function allowedGoogleEmails(c) {
+  return (c.env.GOOGLE_ALLOWED_EMAILS || '').split(/[\s,]+/).map(email => email.toLowerCase()).filter(Boolean)
+}
+function googleAllowed(c, email) {
+  return typeof email === 'string' && allowedGoogleEmails(c).includes(email.trim().toLowerCase())
+}
+function googleConfigured(c) {
+  return configured(c) && c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET && allowedGoogleEmails(c).length > 0
 }
 function sessionSecret(c) { return c.env.SESSION_SECRET || c.env.TELEGRAM_BOT_TOKEN }
 function options(c, maxAge) {
@@ -46,11 +56,16 @@ export async function requireUser(c, next) {
   if (session?.provider === 'agent') return authenticateAgentSession(c, session, next)
   let user = null
   if (Number.isSafeInteger(session?.userId)) {
-    user = session.provider === 'telegram' && session.userId > 0
-      ? { id: session.userId, name: session.name || 'Telegram', provider: 'telegram' }
-      : await c.env.DB.prepare('SELECT id, email, name FROM app_users WHERE id = ?').bind(session.userId).first()
+    if (session.provider === 'telegram' && session.userId > 0) {
+      user = { id: session.userId, name: session.name || 'Telegram', provider: 'telegram' }
+    } else {
+      const account = await c.env.DB.prepare('SELECT id, email, name FROM app_users WHERE id = ?').bind(session.userId).first()
+      if (account && googleAllowed(c, account.email)) user = { ...account, provider: 'google' }
+      else deleteCookie(c, SESSION, options(c, 0))
+    }
   }
   user ||= await telegramUser(c)
+  if (user) user = await dataUser(c, user)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
   c.set('userId', user.id)
   c.set('user', user)
@@ -77,18 +92,18 @@ auth.post('/password', async (c) => {
 auth.post('/telegram', requireUser, async (c) => {
   const user = c.get('user')
   if (user.provider !== 'telegram' || !sessionSecret(c)) return c.json({ error: 'Telegram authentication required' }, 401)
-  await setSignedCookie(c, SESSION, JSON.stringify({ userId: user.id, name: user.name, provider: 'telegram', expiresAt: Date.now() + DURATION * 1000 }), sessionSecret(c), options(c, DURATION))
+  await setSignedCookie(c, SESSION, JSON.stringify({ userId: user.accountId ?? user.id, name: user.name, provider: 'telegram', expiresAt: Date.now() + DURATION * 1000 }), sessionSecret(c), options(c, DURATION))
   return c.json(user)
 })
 
 // Keep the previous endpoint for already deployed Telegram clients.
 auth.post('/session', requireUser, async (c) => {
   if (c.get('user').provider !== 'telegram' || !c.env.TELEGRAM_BOT_TOKEN) return c.json({ error: 'Telegram authentication required' }, 401)
-  return c.json(await signSession(c.get('userId'), c.env.TELEGRAM_BOT_TOKEN))
+  return c.json(await signSession(c.get('user').accountId ?? c.get('userId'), c.env.TELEGRAM_BOT_TOKEN))
 })
 
 auth.get('/google', async (c) => {
-  if (!configured(c) || !c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) return c.json({ error: 'Google login is not configured' }, 503)
+  if (!googleConfigured(c)) return c.json({ error: 'Google login is not configured' }, 503)
   const state = crypto.randomUUID()
   const verifier = crypto.randomUUID() + crypto.randomUUID()
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
@@ -105,7 +120,7 @@ auth.get('/google', async (c) => {
 })
 
 auth.get('/google/callback', async (c) => {
-  if (!configured(c) || !c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) return c.json({ error: 'Google login is not configured' }, 503)
+  if (!googleConfigured(c)) return c.json({ error: 'Google login is not configured' }, 503)
   const flow = await readCookie(c, OAUTH)
   deleteCookie(c, OAUTH, options(c, 0))
   if (!flow || flow.state !== c.req.query('state') || !c.req.query('code') || c.req.query('error')) return c.redirect('/?auth_error=1')
@@ -124,6 +139,7 @@ auth.get('/google/callback', async (c) => {
     if (!info.ok) throw new Error('User lookup failed')
     const profile = await info.json()
     if (typeof profile.sub !== 'string' || !profile.sub || profile.email_verified !== true || !profile.email) throw new Error('Unverified account')
+    if (!googleAllowed(c, profile.email)) return c.redirect('/?auth_error=not_allowed')
     // Negative IDs avoid collisions with existing positive Telegram user IDs.
     const bytes = crypto.getRandomValues(new Uint32Array(2))
     const id = -(bytes[0] * 0x100000 + (bytes[1] & 0xfffff) + 1)

@@ -7,7 +7,7 @@ import { auth, requireUser } from './auth.js'
 const user = { id: -123, email: 'owner@example.com', name: 'Owner' }
 function setup() {
   const statement = { bind: vi.fn().mockReturnThis(), run: vi.fn().mockResolvedValue({}), first: vi.fn().mockResolvedValue(user) }
-  const env = { SESSION_SECRET: 'a'.repeat(64), APP_ORIGIN: 'https://shop.example', GOOGLE_CLIENT_ID: 'client', GOOGLE_CLIENT_SECRET: 'secret', DB: { prepare: vi.fn().mockReturnValue(statement) } }
+  const env = { SESSION_SECRET: 'a'.repeat(64), APP_ORIGIN: 'https://shop.example', GOOGLE_CLIENT_ID: 'client', GOOGLE_CLIENT_SECRET: 'secret', GOOGLE_ALLOWED_EMAILS: 'owner@example.com', DB: { prepare: vi.fn().mockReturnValue(statement) } }
   const app = new Hono()
   app.route('/api/auth', auth)
   app.use('*', requireUser)
@@ -92,6 +92,42 @@ describe('Google authentication', () => {
     googleResponses()
     const response = await app.request('/api/auth/google/callback?code=code&state=' + url.searchParams.get('state'), { headers }, env)
     expect(response.headers.get('location')).toBe('/')
+  })
+  it.each([undefined, '', '  ,\n  '])('disables Google login when the allowlist is missing or empty', async (allowlist) => {
+    const { app, env } = setup()
+    env.GOOGLE_ALLOWED_EMAILS = allowlist
+    const response = await app.request('/api/auth/google', {}, env)
+    expect(response.status).toBe(503)
+    expect(response.headers.get('set-cookie')).toBeNull()
+  })
+  it.each(['stranger@example.com', 'owner@example.com.attacker.test', 'owner+other@example.com'])('rejects unlisted Google email %s before saving a user', async (email) => {
+    const { app, env } = setup()
+    const { headers, url } = await start(app, env)
+    googleResponses({ sub: 'google-stranger', email, email_verified: true })
+    const response = await app.request('/api/auth/google/callback?code=code&state=' + url.searchParams.get('state'), { headers }, env)
+    expect(response.headers.get('location')).toBe('/?auth_error=not_allowed')
+    expect(env.DB.prepare).not.toHaveBeenCalled()
+    expect(response.headers.get('set-cookie')).not.toContain('epicerie_session=')
+  })
+  it('matches exact email addresses case-insensitively across commas and newlines', async () => {
+    const { app, env } = setup()
+    env.GOOGLE_ALLOWED_EMAILS = ' other@example.com,\n OWNER@EXAMPLE.COM '
+    const { headers, url } = await start(app, env)
+    googleResponses({ sub: 'google-123', email: 'Owner@Example.com', email_verified: true })
+    const response = await app.request('/api/auth/google/callback?code=code&state=' + url.searchParams.get('state'), { headers }, env)
+    expect(response.headers.get('location')).toBe('/list/abc')
+    expect(response.headers.get('set-cookie')).toContain('epicerie_session=')
+  })
+  it('rejects an existing Google session immediately after removal from the allowlist', async () => {
+    const { app, env } = setup()
+    const signed = await generateSignedCookie('epicerie_session', JSON.stringify({ userId: user.id, expiresAt: Date.now() + 60_000 }), env.SESSION_SECRET)
+    const headers = { Cookie: signed.split(';')[0] }
+    expect((await app.request('/api/auth/me', { headers }, env)).status).toBe(200)
+    env.GOOGLE_ALLOWED_EMAILS = 'someone-else@example.com'
+    const rejected = await app.request('/api/auth/me', { headers }, env)
+    expect(rejected.status).toBe(401)
+    expect(rejected.headers.get('set-cookie')).toContain('Max-Age=0')
+    expect((await app.request('/api/lists', { headers }, env)).status).toBe(401)
   })
   it('rejects unverified Google email without creating a user or session', async () => {
     const { app, env } = setup()

@@ -96,3 +96,11 @@ CREATE TABLE IF NOT EXISTS agent_login_attempts (
   window_start INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_agent_attempts_window ON agent_login_attempts(window_start);
+
+CREATE TABLE IF NOT EXISTS shared_telegram_users (
+  tg_user_id INTEGER PRIMARY KEY CHECK (tg_user_id > 0)
+);
+CREATE TABLE IF NOT EXISTS data_migrations (
+  name TEXT PRIMARY KEY,
+  applied_at INTEGER NOT NULL
+);
