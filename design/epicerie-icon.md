@@ -1,0 +1,7 @@
+# épicerie app icon
+
+Source: `epicerie-icon.png`. Generated with the built-in image_gen tool. PNG exports in `public/icons/grocery-v2-*` were resized with ImageMagick. The full-bleed background supports home-screen masking; corner rounding is applied by the operating system.
+
+## Generation prompt
+
+Use case: logo-brand. Create a single finished square home-screen app icon for épicerie, a family grocery list app with a quiet French neighborhood grocery aesthetic. Full bleed deep forest green background (#273d32), no rounded corner mask, no border, no lettering or text. Centered beautifully composed small still life: a warm ivory canvas grocery tote with softly curved handles, one golden baguette, a dark sage leek or leafy greens, and a single small muted terracotta tomato peeking from the tote. Elegant handcrafted gouache/paper-cut illustration, subtle paper texture, confident simple shapes with a little warmth and depth, refined editorial design rather than generic clip art. Palette cream, warm honey gold, sage green and a tiny terracotta accent against forest green. Large clear silhouette recognizable at 48px. All important artwork including handles and food must fit inside a centered circle of diameter 74% of the image, leaving ample uninterrupted green around it so Android circle masking cannot clip anything. Flat front view, no drop shadow outside the bag, no scenes or mockup, no watermark. Output one square high resolution icon.
