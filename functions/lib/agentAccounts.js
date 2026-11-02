@@ -100,6 +100,14 @@ agentAccounts.delete('/:id', async (c) => {
   return c.json({ ok: true })
 })
 
+// Preserve DELETE /:id as revocation for existing clients; permanent deletion is explicit.
+agentAccounts.delete('/:id/permanent', async (c) => {
+  const result = await c.env.DB.prepare('DELETE FROM agent_accounts WHERE id = ? AND user_id = ?')
+    .bind(c.req.param('id'), c.get('userId')).run()
+  if (!result.meta.changes) return c.json({ error: 'アカウントが見つかりません' }, 404)
+  return c.json({ ok: true })
+})
+
 export async function verifyAgentLogin(c) {
   if (!passwordConfigured(c)) return { error: 'ID・パスワード認証は未設定です', status: 503 }
   let body

@@ -327,3 +327,51 @@ describe('Family password accounts issued from Telegram', () => {
     expect((await login(account)).response.status).toBe(401)
   })
 })
+
+
+describe('Permanent password account deletion', () => {
+  it.each(['agent', 'family'])('deletes %s credentials, invalidates sessions, and allows login ID reuse without deleting shared data', async accountType => {
+    prepareSharedData()
+    const { account } = await create({ accountType })
+    const { cookie } = await login(account)
+    const snapshot = () => ['lists', 'items', 'favorites', 'list_members', 'user_logs'].map(table => sqlite.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all())
+    const before = snapshot()
+    expect((await call('/auth/me', { cookie })).status).toBe(200)
+    expect((await call('/accounts/' + account.id + '/permanent', { method: 'DELETE', cookie: otherCookie })).status).toBe(200)
+    expect(sqlite.prepare('SELECT * FROM agent_accounts WHERE id=?').get(account.id)).toBeUndefined()
+    expect(sqlite.prepare('SELECT * FROM family_accounts WHERE account_id=?').get(account.id)).toBeUndefined()
+    expect(await (await call('/accounts', { cookie: ownerCookie })).json()).toEqual([])
+    expect((await call('/auth/me', { cookie })).status).toBe(401)
+    expect((await login(account)).response.status).toBe(401)
+    expect(snapshot()).toEqual(before)
+    const replacement = await create({ accountType })
+    expect(replacement.response.status).toBe(201)
+    expect(replacement.account.id).not.toBe(account.id)
+    expect((await login(replacement.account)).response.status).toBe(200)
+    expect((await login(replacement.account, account.password)).response.status).toBe(401)
+    expect((await call('/auth/me', { cookie })).status).toBe(401)
+  })
+
+  it.each(['revoked', 'expired'])('can delete an already %s agent account through the legacy alias', async state => {
+    const { account } = await create()
+    sqlite.prepare(`UPDATE agent_accounts SET ${state === 'revoked' ? 'revoked_at' : 'expires_at'}=? WHERE id=?`).run(Date.now() - 1, account.id)
+    expect((await call('/agent-accounts/' + account.id + '/permanent', { method: 'DELETE', cookie: ownerCookie })).status).toBe(200)
+    expect(sqlite.prepare('SELECT * FROM agent_accounts WHERE id=?').get(account.id)).toBeUndefined()
+  })
+
+  it('rejects unauthenticated, foreign-owner, cross-origin, and password-authenticated deletion', async () => {
+    const { account } = await create()
+    const { cookie } = await login(account)
+    const path = '/accounts/' + account.id + '/permanent'
+    expect((await call(path, { method: 'DELETE' })).status).toBe(401)
+    expect((await call(path, { method: 'DELETE', cookie: otherCookie })).status).toBe(404)
+    expect((await call(path, { method: 'DELETE', cookie: ownerCookie, headers: { Origin: 'https://evil.example' } })).status).toBe(403)
+    expect((await call(path, { method: 'DELETE', cookie })).status).toBe(403)
+    expect(sqlite.prepare('SELECT id FROM agent_accounts WHERE id=?').get(account.id)).toBeTruthy()
+    prepareSharedData()
+    const { account: family } = await create({ accountType: 'family', loginId: 'family-test' })
+    const { cookie: familyCookie } = await login(family)
+    expect((await call(path, { method: 'DELETE', cookie: familyCookie })).status).toBe(403)
+    expect((await call('/accounts/missing/permanent', { method: 'DELETE', cookie: ownerCookie })).status).toBe(404)
+  })
+})

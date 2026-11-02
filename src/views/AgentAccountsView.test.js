@@ -2,13 +2,15 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import AgentAccountsView from './AgentAccountsView.vue'
 import { api } from '../composables/useApi.js'
+import { confirmAsync } from '../composables/useTelegram.js'
 
-vi.mock('../composables/useApi.js', () => ({ api: { getLists: vi.fn(), getAgentAccounts: vi.fn(), createAgentAccount: vi.fn(), revokeAgentAccount: vi.fn() } }))
+vi.mock('../composables/useApi.js', () => ({ api: { getLists: vi.fn(), getAgentAccounts: vi.fn(), createAgentAccount: vi.fn(), revokeAgentAccount: vi.fn(), deleteAgentAccount: vi.fn() } }))
 vi.mock('../composables/useTelegram.js', () => ({ confirmAsync: vi.fn().mockResolvedValue(true) }))
 let wrapper
 const account = { id: 'agent', name: 'Muse', loginId: 'muse-shopping', listIds: ['list-a'], permission: 'read', expiresAt: Date.now() + 86_400_000, lastUsedAt: null, revokedAt: null }
 beforeEach(() => {
   vi.clearAllMocks()
+  confirmAsync.mockResolvedValue(true)
   api.getLists.mockResolvedValue([{ id: 'list-a', name: 'Groceries' }])
   api.getAgentAccounts.mockResolvedValue([])
 })
@@ -57,6 +59,50 @@ describe('Agent account management', () => {
     expect(api.revokeAgentAccount).toHaveBeenCalledWith('agent')
     expect(wrapper.text()).toContain('失効済み')
     expect(wrapper.find('.revoke').exists()).toBe(false)
+  })
+  it.each([
+    { ...account },
+    { ...account, revokedAt: 1 },
+    { ...account, expiresAt: 1 },
+    { ...account, accountType: 'family', expiresAt: null },
+  ])('deletes an account from the list after confirmation, including inactive accounts', async row => {
+    api.getAgentAccounts.mockResolvedValue([row])
+    api.deleteAgentAccount.mockResolvedValue({ ok: true })
+    await render()
+    if (row.accountType === 'family') expect(wrapper.find('.account-heading').text()).toContain('有効')
+    await wrapper.find('.delete-account').trigger('click')
+    await flushPromises()
+    expect(confirmAsync).toHaveBeenCalledWith(expect.stringContaining(row.loginId))
+    expect(api.deleteAgentAccount).toHaveBeenCalledWith(row.id)
+    expect(wrapper.find('.agent-account').exists()).toBe(false)
+  })
+  it('keeps the account when deletion is cancelled or the server fails', async () => {
+    api.getAgentAccounts.mockResolvedValue([{ ...account }])
+    await render()
+    confirmAsync.mockResolvedValueOnce(false)
+    await wrapper.find('.delete-account').trigger('click')
+    await flushPromises()
+    expect(api.deleteAgentAccount).not.toHaveBeenCalled()
+    expect(wrapper.find('.agent-account').exists()).toBe(true)
+    api.deleteAgentAccount.mockRejectedValueOnce(new Error('削除できませんでした'))
+    await wrapper.find('.delete-account').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.agent-account').exists()).toBe(true)
+    expect(wrapper.find('[role="alert"]').text()).toBe('削除できませんでした')
+  })
+  it('clears newly issued credentials when their account is deleted', async () => {
+    api.createAgentAccount.mockResolvedValue({ ...account, accountType: 'family', expiresAt: null, password: 'one-time-secret' })
+    api.deleteAgentAccount.mockResolvedValue({ ok: true })
+    await render()
+    await wrapper.find('input[maxlength="80"]').setValue('Family')
+    await wrapper.find('input[maxlength="64"]').setValue('family-browser')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('textarea').exists()).toBe(true)
+    await wrapper.find('.delete-account').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('textarea').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('one-time-secret')
   })
   it('does not expose the issuance form after a failed management request', async () => {
     api.getAgentAccounts.mockRejectedValue(new Error('Forbidden'))

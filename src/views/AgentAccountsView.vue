@@ -14,7 +14,7 @@
       <p class="hint">パスワードは発行時に自動生成されます。</p>
       <label v-if="accountType === 'agent'">権限<select v-model="permission"><option value="read">閲覧のみ</option><option value="items:write">閲覧・商品の追加と更新</option></select></label>
       <p v-if="accountType === 'agent'" class="hint">リストや商品の削除、メンバー変更、設定の操作は許可されません。</p>
-      <p v-else class="hint">共通の全リストとお気に入りを通常操作できます。追加されるリストも利用でき、有効期限はありません。発行・失効はTelegramから行います。</p>
+      <p v-else class="hint">共通の全リストとお気に入りを通常操作できます。追加されるリストも利用でき、有効期限はありません。発行・失効・削除はTelegramから行います。</p>
       <fieldset v-if="accountType === 'agent'">
         <legend>対象リスト</legend>
         <p v-if="!lists.length">先に買い物リストを作成するか、共有コードで参加してください。</p>
@@ -40,13 +40,16 @@
         <p v-if="account.accountType === 'family'">対象：共通の全リスト（今後の追加分を含む）</p>
         <p v-else>対象：{{ account.listIds.map(id => lists.find(list => list.id === id)?.name || id).join('、') }}</p>
         <p class="hint">ID：{{ account.loginId }}<br />有効期限：{{ account.expiresAt == null ? '期限なし' : date(account.expiresAt) }}<br />最終利用：{{ account.lastUsedAt ? date(account.lastUsedAt) : '未使用' }}</p>
-        <button v-if="!account.revokedAt && (account.expiresAt == null || account.expiresAt > now)" @click="revoke(account)" :disabled="busy" class="revoke">失効させる</button>
+        <div class="account-actions">
+          <button v-if="!account.revokedAt && (account.expiresAt == null || account.expiresAt > now)" @click="revoke(account)" :disabled="busy" class="revoke">失効させる</button>
+          <button @click="remove(account)" :disabled="busy" class="delete-account">削除する</button>
+        </div>
       </article>
     </section>
     <section class="panel usage">
       <h2>ブラウザからの利用</h2>
       <p>家族は通常のブラウザで、Museはブラウザ操作でこのアプリを開き、発行したIDとパスワードを入力してください。</p>
-      <p class="hint">発行したアカウントの権限で画面を操作できます。失効させると、ログイン済みのセッションも利用できなくなります。</p>
+      <p class="hint">発行したアカウントの権限で画面を操作できます。失効または削除すると、ログイン済みのセッションも利用できなくなります。削除すると一覧から消え、同じログインIDを再利用できます。共有の買い物データは残ります。</p>
     </section>
   </main>
 </template>
@@ -73,7 +76,7 @@ const busy = ref(false)
 const now = ref(Date.now())
 let timer
 const date = value => new Date(value).toLocaleString('ja-JP')
-const status = account => account.revokedAt ? '失効済み' : account.expiresAt <= now.value ? '期限切れ' : '有効'
+const status = account => account.revokedAt ? '失効済み' : account.expiresAt != null && account.expiresAt <= now.value ? '期限切れ' : '有効'
 async function load() {
   loading.value = true
   loadFailed.value = false
@@ -110,6 +113,19 @@ async function revoke(account) {
   } catch (e) { error.value = e.message }
   finally { busy.value = false }
 }
+async function remove(account) {
+  if (busy.value) return
+  const confirmed = await confirmAsync(`${account.name}（${account.loginId}）を削除しますか？ログイン情報は元に戻せず、ログイン中の端末も利用できなくなります。共有の買い物リストやお気に入りは残ります。`)
+  if (!confirmed || busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await api.deleteAgentAccount(account.id)
+    accounts.value = accounts.value.filter(item => item.id !== account.id)
+    if (created.value?.id === account.id) { created.value = null; copied.value = false }
+  } catch (e) { error.value = e.message }
+  finally { busy.value = false }
+}
 async function copy() {
   try { await navigator.clipboard.writeText(created.value.password); copied.value = true }
   catch { error.value = 'コピーできませんでした。パスワードを選択して保存してください。' }
@@ -141,7 +157,8 @@ textarea { font-family: monospace; overflow-wrap: anywhere; resize: vertical; ma
 .account-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }
 .account-heading span { font-size: 12px; flex-shrink: 0; }
 .agent-account p { font-size: 13px; margin: 8px 0; }
-.revoke, .error { color: #bd3030; }
+.account-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.revoke, .delete-account, .error { color: #bd3030; }
 pre { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 400px) { .panel { padding: 18px; } .dismiss { margin-left: 0; } }
 </style>
