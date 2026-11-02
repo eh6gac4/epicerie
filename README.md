@@ -8,7 +8,7 @@ Cloudflare Pagesの本番環境に以下を設定する。
 
 | 変数 | 値 |
 | --- | --- |
-| APP_ORIGIN | `https://grocery-list-9m8.pages.dev` |
+| APP_ORIGIN | `https://epicerie.eh6gac4.work` |
 | TELEGRAM_BOT_TOKEN | 登録済みTelegram Mini Appのボットトークン |
 | SESSION_SECRET | `openssl rand -hex 32` で生成する32文字以上の秘密値 |
 | AGENT_PASSWORD_PEPPER | 上記とは別に生成する32文字以上のパスワード保護シークレット |
@@ -134,3 +134,11 @@ npm run dev
 `npm test` で検証する。SQLを実行するAPI統合テストはNode.js 22.13以上の組み込みSQLiteを使用する。
 
 - https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+
+## ホーム画面で使う
+
+本番URLは https://epicerie.eh6gac4.work/ 。iPhone・iPadはSafariの共有メニューから「ホーム画面に追加」、Androidはブラウザのインストールメニューを使う。通常のブラウザと同じ家族用ID・パスワードでログインする。端末によっては追加後に再ログインが必要。
+
+インストール後は独立したウィンドウで開く。API・認証情報・添付ファイルはService Workerに保存しない。通信断時は接続案内を表示する。リストの閲覧・変更にはインターネット接続が必要。
+
+独自ドメインは既存の `grocery-list` Pagesプロジェクトに追加する。DNSには `epicerie.eh6gac4.work` から `grocery-list-9m8.pages.dev` へのCNAMEを設定し、`APP_ORIGIN` を本番URLに合わせる。Telegramのメニューボタン・Mini App起動URLも本番URLに更新する。

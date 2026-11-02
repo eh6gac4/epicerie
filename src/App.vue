@@ -1,4 +1,5 @@
 <template>
+  <PwaStatus />
   <div v-if="loading" class="login">読み込み中…</div>
   <template v-else-if="user">
     <div class="account"><span>{{ user.name || user.email }}</span><a v-if="user.provider === 'telegram'" href="/settings/accounts">アカウント管理</a><button @click="logout">ログアウト</button></div>
@@ -23,6 +24,7 @@
 
 <script setup>
 import { ref, provide, onMounted, onUnmounted } from 'vue'
+import PwaStatus from './components/PwaStatus.vue'
 import { applyTheme, getWebApp, setMyUserId } from './composables/useTelegram.js'
 import { api } from './composables/useApi.js'
 
@@ -79,14 +81,14 @@ onUnmounted(() => window.removeEventListener('auth-required', clearUser))
   --font-sans: 'DM Sans', -apple-system, 'Hiragino Koshi Gothic ProN', 'Hiragino Sans', sans-serif;
 }
 
-.login { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; }
+.login { min-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; }
 .password-login { display: grid; gap: 10px; width: min(100%, 320px); text-align: left; }
 .password-login input { width: 100%; font: inherit; color: var(--tg-text); background: var(--tg-bg); border: 1px solid var(--tg-hint); border-radius: 8px; padding: 12px; }
 .password-login button { padding: 14px; background: var(--tg-button); color: var(--tg-button-text); border-radius: var(--radius); }
 .password-login button:disabled { opacity: .5; }
 .login h1 { font-family: var(--font-serif); font-size: 48px; margin: 0; }
 .login-guide { max-width: 320px; color: var(--tg-hint); font-size: 13px; line-height: 1.8; }
-.account { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding: 10px 20px; font-size: 12px; }
+.account { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 16px; padding: 10px 20px; font-size: 12px; }
 .account button { text-decoration: underline; }
 
 *, *::before, *::after {
@@ -96,6 +98,10 @@ onUnmounted(() => window.removeEventListener('auth-required', clearUser))
 
 body {
   margin: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   font-family: var(--font-sans);
   background: var(--tg-bg);
   color: var(--tg-text);
@@ -117,5 +123,6 @@ button {
 
 input {
   font-family: var(--font-sans);
+  font-size: 16px;
 }
 </style>
