@@ -49,6 +49,7 @@ export const api = {
   getAgentAccounts: () => request('GET', '/api/accounts'),
   createAgentAccount: (data) => request('POST', '/api/accounts', data),
   revokeAgentAccount: (id) => request('DELETE', `/api/accounts/${id}`),
+  deleteAgentAccount: (id) => request('DELETE', `/api/accounts/${id}/permanent`),
   getMe: () => request('GET', '/api/auth/me'),
   async loginTelegram() {
     let token
