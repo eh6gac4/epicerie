@@ -156,6 +156,7 @@
           </div>
         </div>
       </Transition>
+      <button class="bulk-open-btn" @click="openBulkAdd()">テキストからまとめて追加</button>
       <div class="input-row">
         <input type="file" ref="fileInput" @change="onFileSelected" accept="image/*,application/pdf" style="display: none;" />
         <button v-if="!isAgent" class="upload-btn" @click="triggerUpload" :disabled="isUploading" aria-label="画像/PDFから追加">
@@ -170,6 +171,7 @@
           ref="addInput"
           :value="newItem"
           @input="newItem = $event.target.value"
+          @paste="onAddPaste"
           class="add-input"
           placeholder="アイテムを追加…"
           maxlength="100"
@@ -189,6 +191,26 @@
         </button>
       </div>
     </footer>
+
+    <Teleport to="body">
+      <Transition name="overlay">
+        <div v-if="showBulkAdd" class="overlay" @click.self="closeBulkAdd">
+          <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="bulk-title">
+            <div class="sheet-handle" />
+            <label id="bulk-title" class="field-label" for="bulk-text">テキストからまとめて追加</label>
+            <p class="bulk-help">1行につき1件追加します。見出しや不要な行は削除してください。</p>
+            <textarea id="bulk-text" ref="bulkInput" v-model="bulkText" class="sheet-input bulk-text"
+              rows="7" placeholder="ステーキ肉&#10;ポテト&#10;蒟蒻ゼリー" :disabled="bulkAdding" />
+            <p v-if="bulkHasLongName" class="error-msg" role="alert">1件につき100文字以内にしてください。</p>
+            <p v-if="bulkError" class="error-msg" role="alert">{{ bulkError }}</p>
+            <button class="sheet-btn" :disabled="bulkAdding || !bulkNames.length || bulkHasLongName" @click="submitBulkAdd">
+              {{ bulkAdding ? '追加中…' : `${bulkNames.length}件を追加する` }}
+            </button>
+            <button class="bulk-open-btn" :disabled="bulkAdding" @click="closeBulkAdd">閉じる</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Rename sheet -->
     <Teleport to="body">
@@ -452,6 +474,13 @@ const favorites = ref([])
 const loading = ref(true)
 const error = ref(null)
 const newItem = ref('')
+const showBulkAdd = ref(false)
+const bulkText = ref('')
+const bulkInput = ref(null)
+const bulkAdding = ref(false)
+const bulkError = ref('')
+const bulkNames = computed(() => parseBulkText(bulkText.value))
+const bulkHasLongName = computed(() => bulkNames.value.some(name => name.length > 100))
 const toast = ref('')
 const inputFocused = ref(false)
 const editItem = ref(null)
@@ -731,6 +760,57 @@ async function recategorizeOthers() {
   }
 }
 
+function openBulkAdd(text = bulkText.value) {
+  bulkText.value = text
+  bulkError.value = ''
+  showBulkAdd.value = true
+  blurInput()
+  nextTick(() => bulkInput.value?.focus())
+}
+
+function closeBulkAdd() {
+  if (bulkAdding.value) return
+  showBulkAdd.value = false
+  nextTick(() => addInput.value?.focus())
+}
+
+function onAddPaste(event) {
+  const text = event.clipboardData?.getData('text/plain')
+  if (!text || !/[\r\n]/.test(text)) return
+  event.preventDefault()
+  openBulkAdd(parseBulkText(text).join('\n'))
+}
+
+function parseBulkText(text) {
+  // Strip common list markers and the request heading, preserving item wording.
+  const lines = text.split(/\r\n|[\n\r]/)
+    .map(line => line.trim().replace(/^(?:[-*・•]\s*|\d+[.)、]\s*)/, ''))
+    .filter(Boolean)
+  if (/^買ってきて[ほ欲]しいもの[：:]?$/.test(lines[0] || '')) lines.shift()
+  return lines
+}
+
+async function submitBulkAdd() {
+  if (!canWrite.value || bulkAdding.value || !bulkNames.value.length || bulkHasLongName.value) return
+  bulkAdding.value = true
+  bulkError.value = ''
+  const names = [...bulkNames.value]
+  let added = 0
+  for (const name of names) {
+    if (!await addItemFull(name, null, null, '', false)) break
+    added++
+  }
+  // Retain only unsaved lines so retrying cannot duplicate successful additions.
+  bulkText.value = names.slice(added).join('\n')
+  bulkAdding.value = false
+  if (added < names.length) {
+    bulkError.value = `${added}件を追加しました。残りの項目を再度追加してください。`
+  } else {
+    closeBulkAdd()
+    showToast(`${added}件のアイテムを追加しました`)
+  }
+}
+
 async function quickAdd(e) {
   if (e && e.isComposing) return
   const name = newItem.value.trim()
@@ -739,7 +819,7 @@ async function quickAdd(e) {
   await addItemFull(name, null, null, '')
 }
 
-async function addItemFull(name, category, quantity, note) {
+async function addItemFull(name, category, quantity, note, restoreInput = true) {
   const tmpId = '_tmp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
   const tmp = {
     id: tmpId,
@@ -759,10 +839,12 @@ async function addItemFull(name, category, quantity, note) {
     const created = await api.addItem(listId, { name, category, quantity, unit: '', note })
     const idx = items.value.findIndex(i => i.id === tmp.id)
     if (idx !== -1) items.value[idx] = created
+    return true
   } catch (e) {
     items.value = items.value.filter(i => i.id !== tmp.id)
     showToast(e.message)
-    newItem.value = name
+    if (restoreInput) newItem.value = name
+    return false
   }
 }
 
@@ -1489,10 +1571,16 @@ onUnmounted(() => {
 .suggest-enter-active, .suggest-leave-active { transition: opacity 0.15s, transform 0.15s; }
 .suggest-enter-from, .suggest-leave-to { opacity: 0; transform: translateY(4px); }
 
+.bulk-open-btn { display: block; margin: 0 auto 8px; padding: 8px; border: 0; background: transparent; color: var(--tg-hint); font-size: 13px; cursor: pointer; }
+.bulk-help { color: var(--tg-hint); font-size: 13px; margin-bottom: 12px; }
+.bulk-text { resize: vertical; line-height: 1.6; margin-bottom: 16px; }
+.sheet-btn:disabled, .bulk-open-btn:disabled { opacity: 0.5; cursor: default; }
+
 /* ── Input row ── */
 .input-row { display: flex; gap: 8px; align-items: center; }
 
 .add-input {
+  min-width: 0;
   flex: 1;
   background: var(--tg-secondary-bg);
   border: none;

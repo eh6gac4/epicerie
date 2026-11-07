@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 import ListView from './ListView.vue'
 
 // Mock vue-router
@@ -399,5 +399,86 @@ describe('ListView.vue - Family password account', () => {
     await wrapper.find('.menu-btn').trigger('click')
     expect(wrapper.findAll('.sheet-btn').map(button => button.text())).toContain('削除する')
     wrapper.unmount()
+  })
+})
+
+
+describe('ListView.vue - Bulk text addition', () => {
+  let wrapper
+  const names = ['ステーキ肉', 'ポテト', '蒟蒻ゼリー', 'きのこのマリネ', 'カッペリーニ', 'さっぱりしたおかず系']
+
+  beforeEach(async () => {
+    const { api } = await import('../composables/useApi.js')
+    vi.clearAllMocks()
+    api.addItem.mockImplementation(async (_id, item) => ({ id: crypto.randomUUID(), ...item }))
+    wrapper = mount(ListView)
+    await flushPromises()
+  })
+
+  afterEach(() => wrapper.unmount())
+
+  async function paste(text) {
+    const preventDefault = vi.fn()
+    await wrapper.find('.add-input').trigger('paste', {
+      clipboardData: { getData: () => text }, preventDefault
+    })
+    return preventDefault
+  }
+
+  it('previews the six requested items and creates each only after confirmation', async () => {
+    const { api } = await import('../composables/useApi.js')
+    await paste('買ってきてほしいもの\r\n' + names.join('\r\n'))
+    expect(document.querySelector('#bulk-text').value).toBe(names.join('\n'))
+    expect(api.addItem).not.toHaveBeenCalled()
+    document.querySelector('[role="dialog"] .sheet-btn').click()
+    await flushPromises()
+    expect(api.addItem.mock.calls.map(([, item]) => item.name)).toEqual(names)
+    expect(document.querySelector('#bulk-text')).toBeNull()
+  })
+
+  it('supports editing pasted lines, skips blanks and list markers, and rejects long names', async () => {
+    const { api } = await import('../composables/useApi.js')
+    await wrapper.find('.bulk-open-btn').trigger('click')
+    const textarea = document.querySelector('#bulk-text')
+    textarea.value = 'あ'.repeat(101)
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    expect(document.querySelector('[role="dialog"] .sheet-btn').disabled).toBe(true)
+    textarea.value = '買ってきてほしいもの：\n ・ 牛乳 \n\n1. 卵\n- パン'
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    expect(document.querySelector('[role="dialog"] .sheet-btn').textContent).toContain('3件')
+    document.querySelector('[role="dialog"] .sheet-btn').click()
+    await flushPromises()
+    expect(api.addItem.mock.calls.map(([, item]) => item.name)).toEqual(['牛乳', '卵', 'パン'])
+  })
+
+  it('retains only unsaved lines after failure and prevents duplicate submissions', async () => {
+    const { api } = await import('../composables/useApi.js')
+    api.addItem.mockResolvedValueOnce({ id: 'first', name: names[0] })
+      .mockRejectedValueOnce(new Error('通信エラー'))
+    await paste(names.join('\n'))
+    const button = document.querySelector('[role="dialog"] .sheet-btn')
+    button.click()
+    button.click()
+    await flushPromises()
+    expect(api.addItem).toHaveBeenCalledTimes(2)
+    expect(document.querySelector('#bulk-text').value).toBe(names.slice(1).join('\n'))
+    expect(wrapper.find('.add-input').element.value).toBe('')
+    document.querySelector('[role="dialog"] .sheet-btn').click()
+    await flushPromises()
+    expect(api.addItem.mock.calls.map(([, item]) => item.name)).toEqual([names[0], names[1], ...names.slice(1)])
+  })
+
+  it('keeps single-line paste and IME confirmation on the existing single-item path', async () => {
+    const { api } = await import('../composables/useApi.js')
+    await paste('牛乳')
+    expect(document.querySelector('#bulk-text')).toBeNull()
+    await wrapper.find('.add-input').setValue('牛乳')
+    await wrapper.find('.add-input').trigger('keydown', { key: 'Enter', isComposing: true })
+    expect(api.addItem).not.toHaveBeenCalled()
+    await wrapper.find('.add-btn').trigger('click')
+    await flushPromises()
+    expect(api.addItem).toHaveBeenCalledWith('test-list', expect.objectContaining({ name: '牛乳' }))
   })
 })
