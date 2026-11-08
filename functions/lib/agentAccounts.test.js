@@ -58,6 +58,30 @@ beforeEach(async () => {
 afterEach(() => sqlite.close())
 
 describe('ID/password agent accounts', () => {
+  it('allows same-origin account creation and login when APP_ORIGIN still points to another domain', async () => {
+    env.APP_ORIGIN = 'https://old-shop.example'
+    const headers = { Origin: 'https://shop.example', 'Sec-Fetch-Site': 'same-origin' }
+    const response = await call('/agent-accounts', { method: 'POST', cookie: ownerCookie, headers,
+      body: { name: 'Muse', loginId: 'muse-origin', permission: 'read', listIds: ['list-a'] } })
+    expect(response.status).toBe(201)
+    const account = await response.json()
+    expect((await login(account, account.password, headers)).response.status).toBe(200)
+  })
+  it('rejects foreign origins and cross-site requests before creating an account', async () => {
+    for (const headers of [
+      { Origin: 'https://evil.example' },
+      { Origin: 'https://other.shop.example', 'Sec-Fetch-Site': 'same-site' },
+      { Origin: 'null' },
+      { Origin: 'https://shop.example', 'Sec-Fetch-Site': 'cross-site' },
+      { 'Sec-Fetch-Site': 'cross-site' },
+    ]) {
+      const response = await call('/agent-accounts', { method: 'POST', cookie: ownerCookie, headers,
+        body: { name: 'Muse', loginId: 'muse-origin', permission: 'read', listIds: ['list-a'] } })
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: 'Invalid origin' })
+    }
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM agent_accounts').get().count).toBe(0)
+  })
   it('requires human authentication, stores a salted hash and only returns the password on creation', async () => {
     expect((await call('/agent-accounts')).status).toBe(401)
     const { response, account } = await create()

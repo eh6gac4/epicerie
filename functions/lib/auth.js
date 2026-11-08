@@ -13,8 +13,11 @@ function options(c, maxAge) {
   return { httpOnly: true, secure: new URL(c.env.APP_ORIGIN || c.req.url).protocol === 'https:', sameSite: 'Lax', path: '/', maxAge }
 }
 function sameOrigin(c) {
-  const origin = new URL(c.env.APP_ORIGIN || c.req.url).origin
-  return c.req.header('Sec-Fetch-Site') !== 'cross-site' && (!c.req.header('Origin') || c.req.header('Origin') === origin)
+  if (c.req.header('Sec-Fetch-Site') === 'cross-site') return false
+  const origin = c.req.header('Origin')
+  // Custom domains and Pages URLs must work even when APP_ORIGIN names another deployment URL.
+  return !origin || origin === new URL(c.req.url).origin ||
+    (Boolean(c.env.APP_ORIGIN) && origin === new URL(c.env.APP_ORIGIN).origin)
 }
 async function readCookie(c, name) {
   try {
