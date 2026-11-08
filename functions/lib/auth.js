@@ -1,3 +1,4 @@
+import { createPasskeyRoutes } from './passkeys.js'
 import { dataUser } from './sharedWorkspace.js'
 import { authenticateAgentSession, verifyAgentLogin } from './agentAccounts.js'
 import { Hono } from 'hono'
@@ -55,13 +56,19 @@ auth.use('*', async (c, next) => {
   return next()
 })
 
+async function issueAccountSession(c, account) {
+  const expiresAt = account.account_type === 'family' ? Date.now() + DURATION * 1000 : Math.min(Date.now() + DURATION * 1000, account.expires_at)
+  await setSignedCookie(c, SESSION, JSON.stringify({ provider: 'agent', agentId: account.id, expiresAt }), sessionSecret(c), options(c, Math.floor((expiresAt - Date.now()) / 1000)))
+}
+
+auth.route('/passkeys', createPasskeyRoutes({ requireUser, issueAccountSession, sessionSecret, sameOrigin, cookieOptions: options }))
+
 auth.post('/password', async (c) => {
   if (!sessionSecret(c) || sessionSecret(c).length < 32) return c.json({ error: 'Session signing is not configured' }, 503)
   if (!sameOrigin(c)) return c.json({ error: 'Invalid origin' }, 403)
   const result = await verifyAgentLogin(c)
   if (result.error) return c.json({ error: result.error }, result.status)
-  const expiresAt = result.account.account_type === 'family' ? Date.now() + DURATION * 1000 : Math.min(Date.now() + DURATION * 1000, result.account.expires_at)
-  await setSignedCookie(c, SESSION, JSON.stringify({ provider: 'agent', agentId: result.account.id, expiresAt }), sessionSecret(c), options(c, Math.floor((expiresAt - Date.now()) / 1000)))
+  await issueAccountSession(c, result.account)
   return c.json(result.user)
 })
 

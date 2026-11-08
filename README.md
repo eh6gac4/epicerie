@@ -39,6 +39,7 @@ mainへのマージ後、GitHub Actionsがビルド、追加テーブルの移�
 npx wrangler d1 execute grocery-list-db --remote --file=migrate_agent_accounts.sql
 npx wrangler d1 execute grocery-list-db --remote --file=migrate_shared_workspace.sql
 npx wrangler d1 execute grocery-list-db --remote --file=migrate_family_accounts.sql
+npx wrangler d1 execute grocery-list-db --remote --file=migrate_passkeys.sql
 ```
 
 設定後にアプリをデプロイする。TelegramとID・パスワードでのログイン・ログアウト、リスト操作、添付表示を確認する。
@@ -83,6 +84,29 @@ npx wrangler d1 execute grocery-list-db --remote --file=migrate_family_accounts.
 ログイン試行は15分間で同一IP・ログインIDの組合せごとに10回、同一IP全体で50回までに制限する。
 失敗理由はIDの不存在・パスワード誤り・期限切れ・失効を区別せず返す。
 Telegram内での通常利用は従来どおり継続できる。
+
+## 家族用アカウントのパスキー
+
+通常のブラウザで家族用ID・パスワードによりログインした後、画面上部の「パスキー管理」から名前を付けて登録する。
+次回はログイン画面の「パスキーでログイン」を選び、指紋・顔認証または端末のPINで本人確認する。ログインIDの入力は不要。
+`/settings/passkeys` で自分のパスキーを一覧・削除できる。1アカウントにつき最大10件。
+ID・パスワードも引き続き使えるため、端末を紛失した場合や未対応ブラウザでは既存の方法でログインできる。
+パスキーを削除すると、その鍵での新しいログインを拒否する。発行済みのログインCookieはログアウト・期限切れ・アカウント失効まで有効。
+端末のパスワード管理アプリ側に残った鍵は、必要に応じて端末側でも削除する。
+
+パスキーは共有データ用IDではなく、個々の家族用アカウントに紐付ける。
+Telegramからのアカウント失効・削除は、パスキーログインと発行済みセッションにも反映する。
+アカウントを削除した場合は鍵と未完了の登録処理も削除する。同じログインIDで再発行しても以前の鍵は使えない。
+Telegram用・エージェント用のパスキー登録は提供しない。アカウント管理は従来どおりTelegramから行う。
+
+WebAuthn対応ブラウザとHTTPSが必要。開発時はlocalhostも利用できる。
+`APP_ORIGIN` を本番URLに設定し、登録・ログインとも同じドメインを使用する。ドメインを変える場合はパスキーの再登録が必要。
+対応ブラウザではホーム画面に追加したアプリからも利用できる。Telegram内ブラウザを含む端末別の挙動は実機で確認する。
+
+サーバーには公開鍵だけを保存する。登録・認証の確認値は署名付きHttpOnly Cookieでブラウザに紐付け、DBで5分間だけ保持する。
+検証時に確認値を一度だけ消費し、接続元・対象ドメイン・署名・端末での本人確認・アカウントの有効性を検証する。
+パスキーAPIのPOSTは同一IPで15分間100回まで。認証レスポンスや鍵はService Workerに保存しない。
+`migrate_passkeys.sql` は自動デプロイ時に適用する。追加の外部認証サービスやシークレットは不要。
 
 ## 共通データと既存データの引き継ぎ
 

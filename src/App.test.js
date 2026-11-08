@@ -1,12 +1,14 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
+import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser'
 import { api } from './composables/useApi.js'
 import { getMyUserId } from './composables/useTelegram.js'
 
-vi.mock('./composables/useApi.js', () => ({ api: { getMe: vi.fn(), logout: vi.fn(), loginTelegram: vi.fn(), loginAgent: vi.fn() } }))
+vi.mock('@simplewebauthn/browser', () => ({ browserSupportsWebAuthn: vi.fn(() => false), startAuthentication: vi.fn() }))
+vi.mock('./composables/useApi.js', () => ({ api: { getMe: vi.fn(), logout: vi.fn(), loginTelegram: vi.fn(), loginAgent: vi.fn(), getPasskeyLoginOptions: vi.fn(), verifyPasskeyLogin: vi.fn() } }))
 let wrapper
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => { vi.clearAllMocks(); browserSupportsWebAuthn.mockReturnValue(false) })
 afterEach(() => wrapper?.unmount())
 function render() {
   wrapper = mount(App, { global: { stubs: { RouterView: { template: '<div data-test="lists">Lists</div>' } } } })
@@ -89,5 +91,38 @@ describe('Login screen without Telegram', () => {
     await flushPromises()
     expect(wrapper.find('[role="alert"]').text()).toContain('接続できませんでした')
     expect(wrapper.findAll('button').map(button => button.text())).toContain('再読み込み')
+  })
+})
+
+
+describe('Passkey login', () => {
+  it('logs in without username/password and exposes family passkey management', async () => {
+    browserSupportsWebAuthn.mockReturnValue(true)
+    api.getMe.mockRejectedValueOnce({ status: 401 }).mockResolvedValueOnce({ id: 0, accountId: 'family-a', name: 'Family', provider: 'family' })
+    api.getPasskeyLoginOptions.mockResolvedValue({ challenge: 'challenge' })
+    startAuthentication.mockResolvedValue({ id: 'key' })
+    api.verifyPasskeyLogin.mockResolvedValue({ provider: 'family' })
+    render(); await flushPromises()
+    await wrapper.find('.passkey-login').trigger('click'); await flushPromises()
+    expect(startAuthentication).toHaveBeenCalledWith({ optionsJSON: { challenge: 'challenge' } })
+    expect(api.verifyPasskeyLogin).toHaveBeenCalledWith({ id: 'key' })
+    expect(wrapper.find('a[href="/settings/passkeys"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="lists"]').exists()).toBe(true)
+  })
+  it('handles cancelled authentication and keeps password login available', async () => {
+    browserSupportsWebAuthn.mockReturnValue(true)
+    api.getMe.mockRejectedValue({ status: 401 })
+    startAuthentication.mockRejectedValue({ name: 'NotAllowedError' })
+    render(); await flushPromises()
+    await wrapper.find('.passkey-login').trigger('click'); await flushPromises()
+    expect(wrapper.find('[role="alert"]').text()).toContain('キャンセル')
+    expect(wrapper.find('[name="password"]').exists()).toBe(true)
+    expect(api.verifyPasskeyLogin).not.toHaveBeenCalled()
+    expect(wrapper.find('.passkey-login').attributes('disabled')).toBeUndefined()
+  })
+  it('hides the passkey button on an unsupported browser', async () => {
+    api.getMe.mockRejectedValue({ status: 401 })
+    render(); await flushPromises()
+    expect(wrapper.find('.passkey-login').exists()).toBe(false)
   })
 })

@@ -45,6 +45,12 @@ function request(method, path, body, extraHeaders = {}) {
 }
 
 export const api = {
+  getPasskeys: () => request('GET', '/api/auth/passkeys'),
+  deletePasskey: (id) => request('DELETE', `/api/auth/passkeys/${encodeURIComponent(id)}`),
+  getPasskeyRegistrationOptions: () => request('POST', '/api/auth/passkeys/register/options'),
+  verifyPasskeyRegistration: (credential, name) => request('POST', '/api/auth/passkeys/register/verify', { credential, name }),
+  getPasskeyLoginOptions: () => request('POST', '/api/auth/passkeys/login/options'),
+  verifyPasskeyLogin: (credential) => request('POST', '/api/auth/passkeys/login/verify', credential),
   loginAgent: (loginId, password) => request('POST', '/api/auth/password', { loginId, password }),
   getAgentAccounts: () => request('GET', '/api/accounts'),
   createAgentAccount: (data) => request('POST', '/api/accounts', data),
