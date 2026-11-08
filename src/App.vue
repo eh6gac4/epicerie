@@ -2,7 +2,7 @@
   <PwaStatus />
   <div v-if="loading" class="login">読み込み中…</div>
   <template v-else-if="user">
-    <div class="account"><span>{{ user.name || user.email }}</span><a v-if="user.provider === 'telegram'" href="/settings/accounts">アカウント管理</a><button @click="logout">ログアウト</button></div>
+    <div class="account"><span>{{ user.name || user.email }}</span><a v-if="user.provider === 'telegram'" href="/settings/accounts">アカウント管理</a><a v-if="user.provider === 'family'" href="/settings/passkeys">パスキー管理</a><button @click="logout">ログアウト</button></div>
     <p v-if="error" role="alert">{{ error }}</p>
     <RouterView />
   </template>
@@ -10,6 +10,7 @@
     <h1>épicerie</h1>
     <p>買い物リストを使うにはログインしてください。</p>
     <p v-if="error" role="alert">{{ error }}</p>
+    <button v-if="passkeysSupported" class="passkey-login" :disabled="signingIn" @click="loginPasskey">{{ signingIn ? 'ログイン中…' : 'パスキーでログイン' }}</button>
     <form @submit.prevent="loginPassword" class="password-login">
       <label for="login-id">ログインID</label>
       <input id="login-id" v-model="loginId" name="username" autocomplete="username" required maxlength="64" />
@@ -26,8 +27,11 @@
 import { ref, provide, onMounted, onUnmounted } from 'vue'
 import PwaStatus from './components/PwaStatus.vue'
 import { applyTheme, getWebApp, setMyUserId } from './composables/useTelegram.js'
+import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser'
+import { passkeyError } from './composables/passkeyError.js'
 import { api } from './composables/useApi.js'
 
+const passkeysSupported = browserSupportsWebAuthn()
 const user = ref(null)
 provide('currentUser', user)
 const loginId = ref('')
@@ -48,6 +52,18 @@ async function loginPassword() {
   error.value = ''
   try { await api.loginAgent(loginId.value, password.value); password.value = ''; await loadUser() }
   catch (e) { error.value = e.message; password.value = '' }
+  finally { signingIn.value = false }
+}
+async function loginPasskey() {
+  if (signingIn.value) return
+  signingIn.value = true
+  error.value = ''
+  try {
+    const optionsJSON = await api.getPasskeyLoginOptions()
+    const credential = await startAuthentication({ optionsJSON })
+    await api.verifyPasskeyLogin(credential)
+    await loadUser()
+  } catch (e) { error.value = passkeyError(e) }
   finally { signingIn.value = false }
 }
 async function logout() {
@@ -81,6 +97,8 @@ onUnmounted(() => {
 .login { min-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; }
 .password-login { display: grid; gap: 10px; width: min(100%, 320px); text-align: left; }
 .password-login input { width: 100%; font: inherit; color: var(--tg-text); background: var(--tg-bg); border: 1px solid var(--tg-hint); border-radius: 8px; padding: 12px; }
+.passkey-login { width: min(100%, 320px); padding: 14px; background: var(--tg-button); color: var(--tg-button-text); border-radius: var(--radius); }
+.passkey-login:disabled { opacity: .5; }
 .password-login button { padding: 14px; background: var(--tg-button); color: var(--tg-button-text); border-radius: var(--radius); }
 .password-login button:disabled { opacity: .5; }
 .login h1 { font-family: var(--font-serif); font-size: 48px; margin: 0; }

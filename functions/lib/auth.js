@@ -1,3 +1,4 @@
+import { createPasskeyRoutes } from './passkeys.js'
 import { dataUser } from './sharedWorkspace.js'
 import { authenticateAgentSession, verifyAgentLogin } from './agentAccounts.js'
 import { Hono } from 'hono'
@@ -13,8 +14,11 @@ function options(c, maxAge) {
   return { httpOnly: true, secure: new URL(c.env.APP_ORIGIN || c.req.url).protocol === 'https:', sameSite: 'Lax', path: '/', maxAge }
 }
 function sameOrigin(c) {
-  const origin = new URL(c.env.APP_ORIGIN || c.req.url).origin
-  return c.req.header('Sec-Fetch-Site') !== 'cross-site' && (!c.req.header('Origin') || c.req.header('Origin') === origin)
+  if (c.req.header('Sec-Fetch-Site') === 'cross-site') return false
+  const origin = c.req.header('Origin')
+  // Custom domains and Pages URLs must work even when APP_ORIGIN names another deployment URL.
+  return !origin || origin === new URL(c.req.url).origin ||
+    (Boolean(c.env.APP_ORIGIN) && origin === new URL(c.env.APP_ORIGIN).origin)
 }
 async function readCookie(c, name) {
   try {
@@ -55,13 +59,19 @@ auth.use('*', async (c, next) => {
   return next()
 })
 
+async function issueAccountSession(c, account) {
+  const expiresAt = account.account_type === 'family' ? Date.now() + DURATION * 1000 : Math.min(Date.now() + DURATION * 1000, account.expires_at)
+  await setSignedCookie(c, SESSION, JSON.stringify({ provider: 'agent', agentId: account.id, expiresAt }), sessionSecret(c), options(c, Math.floor((expiresAt - Date.now()) / 1000)))
+}
+
+auth.route('/passkeys', createPasskeyRoutes({ requireUser, issueAccountSession, sessionSecret, sameOrigin, cookieOptions: options }))
+
 auth.post('/password', async (c) => {
   if (!sessionSecret(c) || sessionSecret(c).length < 32) return c.json({ error: 'Session signing is not configured' }, 503)
   if (!sameOrigin(c)) return c.json({ error: 'Invalid origin' }, 403)
   const result = await verifyAgentLogin(c)
   if (result.error) return c.json({ error: result.error }, result.status)
-  const expiresAt = result.account.account_type === 'family' ? Date.now() + DURATION * 1000 : Math.min(Date.now() + DURATION * 1000, result.account.expires_at)
-  await setSignedCookie(c, SESSION, JSON.stringify({ provider: 'agent', agentId: result.account.id, expiresAt }), sessionSecret(c), options(c, Math.floor((expiresAt - Date.now()) / 1000)))
+  await issueAccountSession(c, result.account)
   return c.json(result.user)
 })
 
