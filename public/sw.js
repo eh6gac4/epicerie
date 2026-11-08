@@ -1,5 +1,5 @@
 // Only public assets are cached. Auth, API responses and attachments stay on the network.
-const CACHE = 'epicerie-public-v1'
+const CACHE = 'epicerie-public-v2'
 const OFFLINE = '/offline.html'
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.add(OFFLINE)))

@@ -1,0 +1,30 @@
+/* CSS follows the system preference before JavaScript loads and while the app is open.
+   Telegram theme parameters override these defaults only inside a Mini App. */
+:root {
+  color-scheme: light dark;
+  --tg-bg: #ffffff;
+  --tg-text: #000000;
+  --tg-hint: #707579;
+  --tg-link: #007aff;
+  --tg-button: #007aff;
+  --tg-button-text: #ffffff;
+  --tg-secondary-bg: #f1f1f4;
+  --status-bg: #fff0ca;
+  --status-text: #614600;
+  background: var(--tg-bg);
+  color: var(--tg-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tg-bg: #181a1b;
+    --tg-text: #f1f3f5;
+    --tg-hint: #a2a9b0;
+    --tg-link: #75b6ff;
+    --tg-button: #75b6ff;
+    --tg-button-text: #10243a;
+    --tg-secondary-bg: #25282c;
+    --status-bg: #42351b;
+    --status-text: #ffe0a0;
+  }
+}

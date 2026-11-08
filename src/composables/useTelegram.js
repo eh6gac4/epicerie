@@ -23,8 +23,9 @@ export function confirmAsync(msg) {
 
 export function applyTheme() {
   const tg = getWebApp()
-  if (!tg) return
-  const t = tg.themeParams
+  // The SDK also creates WebApp in browsers/PWAs, with a default light theme.
+  if (!tg?.initData) return
+  const t = tg.themeParams ?? {}
   const root = document.documentElement
   const set = (name, value) => { if (value) root.style.setProperty(name, value) }
   set('--tg-bg', t.bg_color)
@@ -34,4 +35,10 @@ export function applyTheme() {
   set('--tg-button', t.button_color)
   set('--tg-button-text', t.button_text_color)
   set('--tg-secondary-bg', t.secondary_bg_color)
+  root.style.colorScheme = tg.colorScheme === 'dark' ? 'dark' : 'light'
+  if (t.bg_color) {
+    document.querySelectorAll('meta[name="theme-color"]').forEach(meta => {
+      meta.content = t.bg_color
+    })
+  }
 }
