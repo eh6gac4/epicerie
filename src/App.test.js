@@ -7,7 +7,7 @@ import { getMyUserId } from './composables/useTelegram.js'
 vi.mock('./composables/useApi.js', () => ({ api: { getMe: vi.fn(), logout: vi.fn(), loginTelegram: vi.fn(), loginAgent: vi.fn() } }))
 let wrapper
 beforeEach(() => vi.clearAllMocks())
-afterEach(() => wrapper?.unmount())
+afterEach(() => { wrapper?.unmount(); vi.unstubAllGlobals(); document.documentElement.removeAttribute('style') })
 function render() {
   wrapper = mount(App, { global: { stubs: { RouterView: { template: '<div data-test="lists">Lists</div>' } } } })
   return wrapper
@@ -90,4 +90,19 @@ describe('Login screen without Telegram', () => {
     expect(wrapper.find('[role="alert"]').text()).toContain('接続できませんでした')
     expect(wrapper.findAll('button').map(button => button.text())).toContain('再読み込み')
   })
+})
+
+it('subscribes to Telegram theme changes and removes the listener on unmount', async () => {
+  const tg = { initData: 'signed-init-data', themeParams: {}, ready: vi.fn(), expand: vi.fn(), onEvent: vi.fn(), offEvent: vi.fn() }
+  vi.stubGlobal('Telegram', { WebApp: tg })
+  api.getMe.mockResolvedValue({ id: 123, name: 'Owner' })
+  render()
+  await flushPromises()
+  const [event, handler] = tg.onEvent.mock.calls[0]
+  expect(event).toBe('themeChanged')
+  tg.themeParams = { bg_color: '#222222' }
+  handler()
+  expect(document.documentElement.style.getPropertyValue('--tg-bg')).toBe('#222222')
+  wrapper.unmount()
+  expect(tg.offEvent).toHaveBeenCalledWith('themeChanged', handler)
 })

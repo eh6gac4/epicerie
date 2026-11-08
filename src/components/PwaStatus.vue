@@ -39,7 +39,7 @@ onUnmounted(() => {
 })
 </script>
 <style scoped>
-.pwa-status { margin: 0; padding: 12px 20px; background: #fff0ca; color: #614600; font-size: 13px; line-height: 1.6; }
+.pwa-status { margin: 0; padding: 12px 20px; background: var(--status-bg); color: var(--status-text); font-size: 13px; line-height: 1.6; }
 .pwa-install { padding: 10px 20px; font-size: 12px; color: var(--tg-hint); }
 .pwa-install button, summary { cursor: pointer; text-decoration: underline; }
 .pwa-install p { max-width: 36em; line-height: 1.8; }

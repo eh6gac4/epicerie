@@ -58,24 +58,21 @@ onMounted(async () => {
   getWebApp()?.ready()
   getWebApp()?.expand()
   applyTheme()
+  if (getWebApp()?.initData) getWebApp().onEvent?.('themeChanged', applyTheme)
   window.addEventListener('auth-required', clearUser)
   try { await api.loginTelegram() } catch {}
   loadUser()
 })
-onUnmounted(() => window.removeEventListener('auth-required', clearUser))
+onUnmounted(() => {
+  window.removeEventListener('auth-required', clearUser)
+  if (getWebApp()?.initData) getWebApp().offEvent?.('themeChanged', applyTheme)
+})
 </script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap');
 
 :root {
-  --tg-bg: #ffffff;
-  --tg-text: #000000;
-  --tg-hint: #707579;
-  --tg-link: #007aff;
-  --tg-button: #007aff;
-  --tg-button-text: #ffffff;
-  --tg-secondary-bg: #f1f1f4;
   --radius: 14px;
   --font-serif: 'Cormorant Garamond', 'Hiragino Mincho ProN', 'Yu Mincho', Georgia, serif;
   --font-sans: 'DM Sans', -apple-system, 'Hiragino Koshi Gothic ProN', 'Hiragino Sans', sans-serif;
