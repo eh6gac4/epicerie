@@ -138,6 +138,11 @@ export async function verifyAgentLogin(c) {
   if (different || !activeAccount(c, row)) return invalid
   return { account: row, user: agentUser(row) }
 }
+export async function getActiveFamilyAccount(c, id) {
+  const account = await c.env.DB.prepare(`${ACCOUNT_SELECT} WHERE a.id = ?`).bind(id).first()
+  return account?.account_type === 'family' && activeAccount(c, account) ? { account, user: agentUser(account) } : null
+}
+
 // Explicit allowlist: new API endpoints do not automatically become agent-accessible.
 async function allowedList(c, agent) {
   const path = c.req.path
