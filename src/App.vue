@@ -39,6 +39,42 @@ const password = ref('')
 const signingIn = ref(false)
 const loading = ref(true)
 const error = ref('')
+const tapTargets = 'button, a, [role="button"], .card, .item, .suggest-item, .fav-grid-item, .share-code-box, .header-title'
+const tapEffects = new Map()
+let pointerStart = null
+
+function onPointerDown(event) {
+  pointerStart = null
+  if (event.button !== 0 || !(event.target instanceof Element)) return
+  if (event.target.closest('button:disabled, [aria-disabled="true"]')) return
+  if (!event.target.closest(tapTargets)) return
+  pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp }
+}
+
+function onPointerUp(event) {
+  const start = pointerStart
+  pointerStart = null
+  if (!start || start.id !== event.pointerId) return
+  if (event.timeStamp - start.time > 500 || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) return
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+
+  const effect = document.createElement('span')
+  effect.className = 'tap-ripple'
+  effect.setAttribute('aria-hidden', 'true')
+  effect.style.left = `${event.clientX}px`
+  effect.style.top = `${event.clientY}px`
+  document.body.append(effect)
+  const timer = window.setTimeout(() => {
+    effect.remove()
+    tapEffects.delete(effect)
+  }, 550)
+  tapEffects.set(effect, timer)
+}
+
+function onPointerCancel() {
+  pointerStart = null
+}
+
 function clearUser() { user.value = null; setMyUserId(null) }
 async function loadUser() {
   loading.value = true
@@ -71,6 +107,9 @@ async function logout() {
   catch { error.value = 'ログアウトできませんでした。もう一度お試しください。' }
 }
 onMounted(async () => {
+  window.addEventListener('pointerdown', onPointerDown)
+  window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerCancel)
   getWebApp()?.ready()
   getWebApp()?.expand()
   applyTheme()
@@ -80,6 +119,14 @@ onMounted(async () => {
   loadUser()
 })
 onUnmounted(() => {
+  window.removeEventListener('pointerdown', onPointerDown)
+  window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerCancel)
+  for (const [effect, timer] of tapEffects) {
+    window.clearTimeout(timer)
+    effect.remove()
+  }
+  tapEffects.clear()
   window.removeEventListener('auth-required', clearUser)
   if (getWebApp()?.initData) getWebApp().offEvent?.('themeChanged', applyTheme)
 })
@@ -134,6 +181,48 @@ button {
   padding: 0;
   appearance: none;
   -webkit-appearance: none;
+}
+
+.tap-ripple {
+  position: fixed;
+  z-index: 9999;
+  width: 0;
+  height: 0;
+  color: var(--tg-button);
+  pointer-events: none;
+}
+
+.tap-ripple::before,
+.tap-ripple::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.tap-ripple::before {
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid currentColor;
+  animation: tap-ring 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.tap-ripple::after {
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+  animation: tap-glow 0.42s ease-out forwards;
+}
+
+@keyframes tap-ring {
+  from { opacity: 0.55; transform: translate(-50%, -50%) scale(0.35); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(1.4); }
+}
+
+@keyframes tap-glow {
+  from { opacity: 0.45; transform: translate(-50%, -50%) scale(0.7); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(1.8); }
 }
 
 input {
