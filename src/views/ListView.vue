@@ -92,16 +92,19 @@
               v-for="item in group.items"
               :key="item.id"
               class="item"
-              :class="{ 'item--done': item.checked }"
+              :class="{ 'item--done': item.checked, 'item--celebrating': celebratingItems.has(item.id) }"
               @click="openEdit(item)"
             >
-              <div class="checkbox-tap" @click.stop="canWrite && toggleItem(item)">
-                <div class="checkbox" :class="{ 'is-checked': item.checked }">
+              <button class="checkbox-tap" type="button" :disabled="!canWrite"
+                :aria-pressed="Boolean(item.checked)"
+                :aria-label="item.checked ? `${item.name}を未購入に戻す` : `${item.name}を購入済みにする`"
+                @click.stop="toggleItem(item)">
+                <div class="checkbox" :class="{ 'is-checked': item.checked, 'is-celebrating': celebratingItems.has(item.id) }">
                   <svg v-if="item.checked" width="11" height="9" viewBox="0 0 11 9" fill="none">
                     <path d="M1 4.5L4 7.5L10 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </div>
-              </div>
+              </button>
               <div class="item-body">
                 <span class="item-name" :class="{ 'is-done': item.checked }">{{ item.name }}</span>
                 <span v-if="item.note" class="item-note">{{ item.note }}</span>
@@ -491,6 +494,8 @@ const renameInput = ref(null)
 const showMenu = ref(false)
 const isOwner = computed(() => list.value && myUserId != null && (list.value.created_by === myUserId || currentUser.value?.shared === true))
 const showChecked = ref(false)
+const celebratingItems = reactive(new Set())
+const celebrationTimers = new Map()
 const recategorizing = ref(false)
 const showShare = ref(false)
 const showFavSheet = ref(false)
@@ -529,7 +534,7 @@ const checkedCount = computed(() => items.value.filter(i => i.checked).length)
 const groupedItems = computed(() => {
   const byCategory = {}
   for (const item of items.value) {
-    if (!keepCheckedMode.value && !showChecked.value && item.checked) continue
+    if (!keepCheckedMode.value && !showChecked.value && item.checked && !celebratingItems.has(item.id)) continue
     const cat = item.category || 'その他'
     if (!byCategory[cat]) byCategory[cat] = []
     byCategory[cat].push(item)
@@ -974,11 +979,22 @@ function decrementEditQty() {
 async function toggleItem(item) {
   const prev = item.checked
   item.checked = !prev
+  if (!prev && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    celebratingItems.add(item.id)
+    window.clearTimeout(celebrationTimers.get(item.id))
+    celebrationTimers.set(item.id, window.setTimeout(() => {
+      celebratingItems.delete(item.id)
+      celebrationTimers.delete(item.id)
+    }, 520))
+  }
   getWebApp()?.HapticFeedback?.selectionChanged()
   try {
     await api.updateItem(item.id, { checked: item.checked })
   } catch {
     item.checked = prev
+    celebratingItems.delete(item.id)
+    window.clearTimeout(celebrationTimers.get(item.id))
+    celebrationTimers.delete(item.id)
   }
 }
 
@@ -1087,6 +1103,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopPolling()
+  for (const timer of celebrationTimers.values()) window.clearTimeout(timer)
+  celebrationTimers.clear()
   document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
@@ -1337,6 +1355,7 @@ onUnmounted(() => {
 
 .item:active { background: color-mix(in srgb, var(--tg-hint) 7%, transparent); }
 .item--done { opacity: 0.38; }
+.item--done.item--celebrating { opacity: 1; }
 
 .checkbox-tap {
   flex-shrink: 0;
@@ -1346,7 +1365,17 @@ onUnmounted(() => {
   margin: -10px;
 }
 
+.checkbox-tap:focus-visible {
+  outline: 2px solid var(--tg-button);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+.checkbox-tap:active .checkbox { transform: scale(0.82); }
+.checkbox-tap:active .checkbox.is-checked { animation: none; }
+
 .checkbox {
+  position: relative;
   flex-shrink: 0;
   width: 24px;
   height: 24px;
@@ -1364,6 +1393,48 @@ onUnmounted(() => {
   border-color: var(--tg-button);
   color: var(--tg-button-text);
   transform: scale(1.06);
+}
+
+.checkbox.is-checked.is-celebrating {
+  animation: checkbox-pop 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.checkbox.is-checked.is-celebrating::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border: 2px solid var(--tg-button);
+  border-radius: 11px;
+  pointer-events: none;
+  animation: checkbox-halo 0.5s ease-out both;
+}
+
+.checkbox.is-checked.is-celebrating svg path {
+  stroke-dasharray: 16;
+  stroke-dashoffset: 16;
+  animation: checkbox-draw 0.24s ease-out 0.06s forwards;
+}
+
+@keyframes checkbox-pop {
+  0% { transform: scale(0.82); }
+  55% { transform: scale(1.18); }
+  100% { transform: scale(1.06); }
+}
+
+@keyframes checkbox-halo {
+  from { opacity: 0.65; transform: scale(0.65); }
+  to { opacity: 0; transform: scale(1.5); }
+}
+
+@keyframes checkbox-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkbox, .item { transition: none; }
+  .checkbox.is-celebrating, .checkbox.is-celebrating::after, .checkbox.is-celebrating svg path { animation: none; }
+  .checkbox.is-celebrating::after { content: none; }
+  .checkbox.is-celebrating svg path { stroke-dashoffset: 0; }
 }
 
 .item-body {

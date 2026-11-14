@@ -127,11 +127,15 @@ describe('ListView.vue - Item row tap', () => {
 
     const checkboxTap = wrapper.find('.checkbox-tap')
     expect(checkboxTap.exists()).toBe(true)
+    expect(checkboxTap.element.tagName).toBe('BUTTON')
+    expect(checkboxTap.attributes('aria-pressed')).toBe('false')
 
     await checkboxTap.trigger('click')
     await new Promise(resolve => setTimeout(resolve, 10))
 
     expect(api.updateItem).toHaveBeenCalledWith(1, { checked: true })
+    expect(wrapper.find('.item--celebrating').exists()).toBe(true)
+    expect(wrapper.find('.checkbox-tap').attributes('aria-pressed')).toBe('true')
     expect(document.querySelector('.sheet')).toBeNull()
   })
 

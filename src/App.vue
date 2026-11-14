@@ -47,8 +47,9 @@ function onPointerDown(event) {
   pointerStart = null
   if (event.button !== 0 || !(event.target instanceof Element)) return
   if (event.target.closest('button:disabled, [aria-disabled="true"]')) return
-  if (!event.target.closest(tapTargets)) return
-  pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp }
+  const target = event.target.closest(tapTargets)
+  if (!target || target.matches('.checkbox-tap, .add-btn--disabled')) return
+  pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp, target }
 }
 
 function onPointerUp(event) {
@@ -63,6 +64,11 @@ function onPointerUp(event) {
   effect.setAttribute('aria-hidden', 'true')
   effect.style.left = `${event.clientX}px`
   effect.style.top = `${event.clientY}px`
+  const rect = start.target.getBoundingClientRect()
+  effect.style.setProperty('--tap-size', `${Math.min(72, Math.max(42, Math.min(rect.width, rect.height) * 1.5))}px`)
+  if (start.target.matches('.new-btn, .add-btn, .sheet-btn:not(.sheet-btn--danger), .passkey-login, .password-login button')) {
+    effect.style.color = 'var(--tg-button-text)'
+  }
   document.body.append(effect)
   const timer = window.setTimeout(() => {
     effect.remove()
@@ -201,9 +207,10 @@ button {
 }
 
 .tap-ripple::before {
-  width: 34px;
-  height: 34px;
-  border: 1.5px solid currentColor;
+  width: var(--tap-size, 48px);
+  height: var(--tap-size, 48px);
+  border: 2px solid currentColor;
+  filter: drop-shadow(0 0 2px var(--tg-button));
   animation: tap-ring 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -216,13 +223,17 @@ button {
 }
 
 @keyframes tap-ring {
-  from { opacity: 0.55; transform: translate(-50%, -50%) scale(0.35); }
-  to { opacity: 0; transform: translate(-50%, -50%) scale(1.4); }
+  from { opacity: 0.7; transform: translate(-50%, -50%) scale(0.3); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(1.2); }
 }
 
 @keyframes tap-glow {
   from { opacity: 0.45; transform: translate(-50%, -50%) scale(0.7); }
   to { opacity: 0; transform: translate(-50%, -50%) scale(1.8); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tap-ripple { display: none; }
 }
 
 input {
