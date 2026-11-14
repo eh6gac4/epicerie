@@ -1113,7 +1113,7 @@ onUnmounted(() => {
 .list-view {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   max-width: 600px;
   margin: 0 auto;
 }
@@ -1123,7 +1123,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 10px 10px 10px 6px;
+  padding: 12px 12px 12px 8px;
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -1174,7 +1174,7 @@ onUnmounted(() => {
 }
 
 .back-btn {
-  padding: 9px 12px;
+  padding: 8px 12px;
   color: var(--tg-link);
   display: flex;
   align-items: center;
@@ -1201,7 +1201,7 @@ onUnmounted(() => {
 }
 
 .share-btn {
-  padding: 9px;
+  padding: 8px;
   color: var(--tg-link);
   display: flex;
   align-items: center;
@@ -1214,7 +1214,7 @@ onUnmounted(() => {
 .share-btn:disabled { opacity: 0.28; }
 
 .menu-btn {
-  padding: 9px;
+  padding: 8px;
   color: var(--tg-hint);
   display: flex;
   align-items: center;
@@ -1245,7 +1245,7 @@ onUnmounted(() => {
   text-align: center;
 }
 
-.empty-art { color: var(--tg-hint); opacity: 0.3; margin-bottom: 10px; }
+.empty-art { color: var(--tg-hint); opacity: 0.3; margin-bottom: 12px; }
 .state-title { margin: 0; font-size: 15px; font-weight: 500; }
 .state-sub { margin: 0; font-size: 13px; color: var(--tg-hint); line-height: 1.6; }
 .state-msg { margin: 0; font-size: 14px; }
@@ -1266,7 +1266,7 @@ onUnmounted(() => {
 .cat-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 20px 16px 8px;
 }
 
@@ -1330,7 +1330,7 @@ onUnmounted(() => {
   color: var(--tg-hint);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .ct-chevron {
@@ -1345,8 +1345,8 @@ onUnmounted(() => {
 .item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 11px 12px 11px 16px;
+  gap: 12px;
+  padding: 12px 12px 12px 16px;
   border-bottom: 1px solid color-mix(in srgb, var(--tg-hint) 8%, transparent);
   cursor: pointer;
   user-select: none;
@@ -1361,8 +1361,8 @@ onUnmounted(() => {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 10px;
-  margin: -10px;
+  padding: 12px;
+  margin: -12px;
 }
 
 .checkbox-tap:focus-visible {
@@ -1402,7 +1402,7 @@ onUnmounted(() => {
 .checkbox.is-checked.is-celebrating::after {
   content: '';
   position: absolute;
-  inset: -7px;
+  inset: -8px;
   border: 2px solid var(--tg-button);
   border-radius: 11px;
   pointer-events: none;
@@ -1449,7 +1449,7 @@ onUnmounted(() => {
   display: block;
   font-size: 13px;
   color: var(--tg-hint);
-  margin-top: 2px;
+  margin-top: 4px;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1480,7 +1480,7 @@ onUnmounted(() => {
 .qty-ctrl {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
@@ -1536,7 +1536,7 @@ onUnmounted(() => {
 .checked-toggle {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   padding: 16px 16px;
   background: none;
@@ -1557,7 +1557,7 @@ onUnmounted(() => {
 .ct-label {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.08em;
@@ -1585,8 +1585,7 @@ onUnmounted(() => {
   flex-shrink: 0;
   background: var(--tg-bg);
   border-top: 1px solid color-mix(in srgb, var(--tg-hint) 11%, transparent);
-  padding: 10px 12px;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 44px);
+  padding: 12px;
   z-index: 10;
 }
 
@@ -1611,7 +1610,7 @@ onUnmounted(() => {
   font-weight: 500;
   letter-spacing: 0.1em;
   color: var(--tg-hint);
-  padding: 11px 16px 6px;
+  padding: 12px 16px 8px;
 }
 
 .suggest-item {
@@ -1619,7 +1618,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 13px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid color-mix(in srgb, var(--tg-hint) 8%, transparent);
   cursor: pointer;
   user-select: none;
@@ -1632,7 +1631,7 @@ onUnmounted(() => {
 .suggest-cat {
   font-size: 11px;
   color: var(--tg-hint);
-  padding: 3px 8px;
+  padding: 4px 8px;
   background: color-mix(in srgb, var(--tg-hint) 10%, transparent);
   border-radius: 10px;
   white-space: nowrap;
@@ -1656,7 +1655,7 @@ onUnmounted(() => {
   background: var(--tg-secondary-bg);
   border: none;
   border-radius: 12px;
-  padding: 13px 16px;
+  padding: 12px 16px;
   font-size: 16px;
   color: var(--tg-text);
   outline: none;
@@ -1776,7 +1775,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: 16px 16px;
   background: var(--tg-secondary-bg);
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--tg-hint) 10%, transparent);
@@ -1814,10 +1813,10 @@ onUnmounted(() => {
   height: 4px;
   border-radius: 2px;
   background: color-mix(in srgb, var(--tg-hint) 32%, transparent);
-  margin: 0 auto 22px;
+  margin: 0 auto 24px;
 }
 
-.field-group { margin-bottom: 18px; }
+.field-group { margin-bottom: 20px; }
 
 .field-label {
   display: block;
@@ -1834,7 +1833,7 @@ onUnmounted(() => {
   background: var(--tg-secondary-bg);
   border: none;
   border-radius: 12px;
-  padding: 13px 16px;
+  padding: 12px 16px;
   font-size: 16px;
   color: var(--tg-text);
   outline: none;
@@ -1863,7 +1862,7 @@ onUnmounted(() => {
   background: var(--tg-secondary-bg);
   border: none;
   border-radius: 12px;
-  padding: 13px 16px;
+  padding: 12px 16px;
   font-size: 15px;
   color: var(--tg-text);
   outline: none;
@@ -1876,9 +1875,9 @@ onUnmounted(() => {
 
 .pills {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -1886,7 +1885,7 @@ onUnmounted(() => {
 .pills::-webkit-scrollbar { display: none; }
 
 .pill {
-  padding: 7px 13px;
+  padding: 8px 12px;
   border-radius: 20px;
   font-size: 13px;
   background: var(--tg-secondary-bg);
@@ -1904,13 +1903,13 @@ onUnmounted(() => {
   background: var(--tg-button);
   color: var(--tg-button-text);
   border-radius: 12px;
-  padding: 15px;
+  padding: 16px;
   font-size: 16px;
   font-weight: 500;
   text-align: center;
   cursor: pointer;
   transition: opacity 0.15s;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .sheet-btn:active { opacity: 0.78; }
@@ -1927,7 +1926,7 @@ onUnmounted(() => {
   transform: translateX(-50%);
   background: color-mix(in srgb, var(--tg-text) 88%, transparent);
   color: var(--tg-bg);
-  padding: 10px 20px;
+  padding: 12px 20px;
   border-radius: 20px;
   font-size: 14px;
   white-space: nowrap;
@@ -1942,7 +1941,7 @@ onUnmounted(() => {
 .recat-btn {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   padding: 0 4px;
   min-height: 44px;
   background: none;
@@ -2003,10 +2002,10 @@ onUnmounted(() => {
 .item-attachment-icon {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   font-size: 11px;
   color: var(--tg-hint);
-  margin-left: 6px;
+  margin-left: 8px;
   vertical-align: middle;
 }
 .attachments-list {
@@ -2044,7 +2043,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px;
   border: 1px dashed color-mix(in srgb, var(--tg-hint) 50%, transparent);
   border-radius: 6px;
